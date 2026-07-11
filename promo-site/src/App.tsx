@@ -17,9 +17,9 @@ const GitHubIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 
 export default function App() {
   const GITHUB_REPO_URL = "https://github.com/BISTArk/projman";
-  const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/tag/v1.0.0`;
-  const DOWNLOAD_MSI_URL = `${GITHUB_REPO_URL}/releases/download/v1.0.0/ProjMan_0.1.0_x64_en-US.msi`;
-  const DOWNLOAD_EXE_URL = `${GITHUB_REPO_URL}/releases/download/v1.0.0/ProjMan_0.1.0_x64-setup.exe`;
+  const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
+  const DOWNLOAD_EXE_URL = `${GITHUB_REPO_URL}/releases/latest/download/ProjMan_0.1.0_x64-setup.exe`;
+  const DOWNLOAD_MSI_URL = `${GITHUB_REPO_URL}/releases/latest/download/ProjMan_0.1.0_x64_en-US.msi`;
 
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");

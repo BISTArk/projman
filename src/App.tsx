@@ -14,7 +14,7 @@ import {
   Activity,
   AlertCircle,
   Terminal as TerminalIcon,
-  Code,
+
   Power,
   Edit2,
   Check,
@@ -919,13 +919,25 @@ export default function App() {
         {/* Footer info */}
         <div className="p-4 bg-slate-950/40 border-t border-slate-900 flex items-center justify-between text-slate-500 text-xs">
           <span className="font-semibold text-[10px] tracking-wider text-slate-600">PROJMAN CLIENT v1.0</span>
-          <a
-            href="https://github.com"
-            target="_blank"
-            className="hover:text-slate-300 transition-colors"
+          <button
+            onClick={async () => {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const result = await invoke<string>('check_for_update');
+                if (result === 'already_latest') {
+                  alert('✅ You are on the latest version!');
+                } else {
+                  alert(`🚀 ${result} — Restarting...`);
+                }
+              } catch (e: any) {
+                alert(`Update check failed: ${e}`);
+              }
+            }}
+            title="Check for updates"
+            className="hover:text-slate-300 transition-colors text-[9px] uppercase tracking-wider font-bold hover:text-emerald-400"
           >
-            <Code className="w-4 h-4" />
-          </a>
+            Check for Updates
+          </button>
         </div>
       </aside>
 

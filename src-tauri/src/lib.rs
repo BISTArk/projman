@@ -347,22 +347,34 @@ fn stop_terminal_command(
     }
 }
 
+#[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    match app.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    let version = update.version.clone();
+                    // Install the update (downloads and relaunches)
+                    update.download_and_install(|_, _| {}, || {}).await
+                        .map_err(|e| format!("Failed to install update: {}", e))?;
+                    Ok(format!("Updated to v{}", version))
+                }
+                Ok(None) => Ok("already_latest".to_string()),
+                Err(e) => Err(format!("Update check failed: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Updater unavailable: {}", e)),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ProcessState {
             processes: Arc::new(Mutex::new(HashMap::new())),
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let state = window.state::<ProcessState>();
-                let mut map = state.processes.lock().unwrap();
-                for &pid in map.values() {
-                    kill_process_tree(pid);
-                }
-                map.clear();
-            }
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -386,7 +398,8 @@ pub fn run() {
             get_running_scripts,
             select_directory,
             run_terminal_command,
-            stop_terminal_command
+            stop_terminal_command,
+            check_for_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

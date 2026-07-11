@@ -1,13 +1,18 @@
 # ProjMan Build Automation Makefile
 
-.PHONY: install dev build clean help
+SHELL := powershell.exe
+.SHELLFLAGS := -NoProfile -Command
+
+.PHONY: install dev build sign release clean help
 
 help:
-	@echo "ProjMan Build Automation Commands:"
-	@echo "  make install  - Install package dependencies"
-	@echo "  make dev      - Start Tauri dev client"
-	@echo "  make build    - Compile and bundle production installers (.exe)"
-	@echo "  make clean    - Clean Rust target build caches"
+	Write-Host 'ProjMan Build Commands:'; \
+	Write-Host '  make install  - Install npm dependencies'; \
+	Write-Host '  make dev      - Start Tauri dev client'; \
+	Write-Host '  make build    - Compile production installers'; \
+	Write-Host '  make sign     - Sign compiled installers'; \
+	Write-Host '  make release  - Build + sign in one step'; \
+	Write-Host '  make clean    - Clean Rust build cache'
 
 install:
 	npm install
@@ -18,5 +23,10 @@ dev:
 build:
 	npm run tauri build
 
+sign:
+	powershell -ExecutionPolicy Bypass -File sign.ps1
+
+release: build sign
+
 clean:
-	cd src-tauri && cargo clean
+	Set-Location src-tauri; cargo clean
