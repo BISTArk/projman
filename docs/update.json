@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "notes": "Initial release of ProjMan — Local Development Command Center",
+  "pub_date": "2026-07-12T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/BISTArk/projman/releases/download/v1.0.0/ProjMan_0.1.0_x64-setup.exe",
+      "signature": "PASTE_SIGNATURE_HERE"
+    }
+  }
+}
