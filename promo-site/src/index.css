@@ -1,0 +1,72 @@
+/* ProjMan Promotion Page CSS */
+
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-base: #030406;
+    --bg-panel: #07090e;
+    --bg-card: #0c0f16;
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    
+    --emerald-primary: #10b981;
+    --emerald-glow: rgba(16, 185, 129, 0.15);
+    --cobalt-glow: rgba(59, 130, 246, 0.12);
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: #f1f5f9;
+    font-family: 'Inter', -apple-system, sans-serif;
+  }
+}
+
+/* Custom Utilities */
+.grid-bg {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.glow-ambient-green {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+}
+
+.glow-ambient-blue {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.06) 0%, transparent 70%);
+}
+
+.text-gradient-emerald {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.border-glow-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.border-glow-hover:hover {
+  border-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.05);
+  transform: translateY(-2px);
+}
+
+.scrollbar-custom::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-custom::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.4);
+}
