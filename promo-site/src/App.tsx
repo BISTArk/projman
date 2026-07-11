@@ -17,8 +17,9 @@ const GitHubIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 
 export default function App() {
   const GITHUB_REPO_URL = "https://github.com/BISTArk/projman";
-  const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
-  const DIRECT_DOWNLOAD_URL = `${GITHUB_REPO_URL}/releases/latest/download/ProjMan_x64_en-US.msi`;
+  const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/tag/v1.0.0`;
+  const DOWNLOAD_MSI_URL = `${GITHUB_REPO_URL}/releases/download/v1.0.0/ProjMan_0.1.0_x64_en-US.msi`;
+  const DOWNLOAD_EXE_URL = `${GITHUB_REPO_URL}/releases/download/v1.0.0/ProjMan_0.1.0_x64-setup.exe`;
 
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -88,11 +89,11 @@ export default function App() {
             <GitHubIcon className="w-4 h-4" />
           </a>
           <a 
-            href={DIRECT_DOWNLOAD_URL}
+            href={DOWNLOAD_MSI_URL}
             className="btn-primary inline-flex items-center justify-center px-4 py-2 rounded-lg text-xs font-extrabold gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download</span>
+            <span>Download v1.0.0</span>
           </a>
         </div>
       </nav>
@@ -136,20 +137,19 @@ export default function App() {
           className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center w-full"
         >
           <a 
-            href={DIRECT_DOWNLOAD_URL}
+            href={DOWNLOAD_EXE_URL}
             className="btn-primary w-full sm:w-auto px-8 py-3.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 group"
           >
             <Download className="w-4 h-4" />
-            <span>Download for Windows (.msi)</span>
+            <span>Download .exe Setup</span>
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
           </a>
           <a 
-            href={GITHUB_RELEASES_URL}
-            target="_blank"
+            href={DOWNLOAD_MSI_URL}
             className="btn-secondary w-full sm:w-auto px-6 py-3.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
           >
-            <GitHubIcon className="w-4 h-4" />
-            <span>GitHub Releases</span>
+            <Download className="w-4 h-4" />
+            <span>Download .msi Installer</span>
           </a>
         </motion.div>
 
@@ -463,19 +463,18 @@ export default function App() {
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
-              href={DIRECT_DOWNLOAD_URL}
+              href={DOWNLOAD_EXE_URL}
               className="btn-primary w-full sm:w-auto px-8 py-3.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
-              <span>Download ProjMan (.msi)</span>
+              <span>Download .exe Setup</span>
             </a>
             <a 
-              href={GITHUB_REPO_URL}
-              target="_blank"
+              href={DOWNLOAD_MSI_URL}
               className="btn-secondary w-full sm:w-auto px-6 py-3.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
             >
-              <GitHubIcon className="w-4 h-4" />
-              <span>GitHub Code</span>
+              <Download className="w-4 h-4" />
+              <span>Download .msi Installer</span>
             </a>
           </div>
         </div>
