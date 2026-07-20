@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+@keyframes operation-progress {
+  0% { transform: translateX(-110%); }
+  50% { transform: translateX(110%); }
+  100% { transform: translateX(310%); }
+}
+
 @theme {
   --font-sans: "Geist", "Inter", "Manrope", system-ui, sans-serif;
   --font-mono: "Geist Mono", monospace;

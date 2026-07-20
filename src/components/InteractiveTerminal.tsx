@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Terminal as TermIcon, Play, Square, Trash2 } from "lucide-react";
+import { Terminal as TermIcon, Play, Square, Trash2, Loader2 } from "lucide-react";
 
 interface InteractiveTerminalProps {
   projectPath: string;
@@ -229,13 +229,18 @@ export const InteractiveTerminal: React.FC<InteractiveTerminalProps> = ({ projec
 
         <div className="flex items-center gap-3">
           {isRunning ? (
-            <button
-              onClick={handleStop}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-semibold shadow transition-colors"
-            >
-              <Square className="w-3.5 h-3.5 fill-white" />
-              Ctrl+C (Kill)
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                <Loader2 className="h-3 w-3 animate-spin" /> Running
+              </span>
+              <button
+                onClick={handleStop}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-semibold shadow transition-colors"
+              >
+                <Square className="w-3.5 h-3.5 fill-white" />
+                Ctrl+C (Kill)
+              </button>
+            </div>
           ) : (
             <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
               Ready
@@ -251,6 +256,12 @@ export const InteractiveTerminal: React.FC<InteractiveTerminalProps> = ({ projec
           </button>
         </div>
       </div>
+
+      {isRunning && (
+        <div className="mb-3 h-1 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label="Command is running">
+          <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 animate-[operation-progress_1.4s_ease-in-out_infinite]" />
+        </div>
+      )}
 
       {/* Output Console Display */}
       <div 

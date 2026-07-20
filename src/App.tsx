@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -18,7 +18,9 @@ import {
   Power,
   Edit2,
   Check,
-  X
+  X,
+  Loader2,
+  Info
 } from "lucide-react";
 import { Terminal } from "./components/Terminal";
 import { EnvEditor } from "./components/EnvEditor";
@@ -100,6 +102,19 @@ const getFrameworkIcon = (framework?: "react" | "next" | "vue" | "svelte" | "exp
       );
   }
 };
+
+const VSCodeIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#23A8F2" d="M17.7 2.2 8.2 11 3.1 7.1 1 8.4v7.2l2.1 1.3 5.1-3.9 9.5 8.8 5.3-2.6V4.8l-5.3-2.6Zm0 5.2v9.2L11.6 12l6.1-4.6Z" />
+  </svg>
+);
+
+const CursorIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="#fff" />
+    <path fill="#111827" d="M7 5.8 18.2 12 13 13.4l-2.2 4.8L7 5.8Z" />
+  </svg>
+);
 // Config structures
 interface Project {
   id: string;
@@ -234,7 +249,19 @@ export default function App() {
     stage: "pulling" | "pushing" | "idle";
     progress: string[];
     error: string | null;
-  }>({ isOpen: false, projectName: "", stage: "idle", progress: [], error: null });
+    completed: number;
+    total: number;
+  }>({ isOpen: false, projectName: "", stage: "idle", progress: [], error: null, completed: 0, total: 0 });
+  const [projectScan, setProjectScan] = useState({ isLoading: false, completed: 0, total: 0 });
+  const scanGeneration = useRef(0);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState<string | null>(null);
+  const [notice, setNotice] = useState<null | {
+    tone: "info" | "success" | "error";
+    title: string;
+    message: string;
+  }>(null);
 
   // Save config on changes
   useEffect(() => {
@@ -268,17 +295,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    const detectAll = async () => {
-      const results: Record<string, "react" | "next" | "vue" | "svelte" | "express" | "tauri" | "node" | "generic"> = {};
-      for (const proj of projects) {
-        results[proj.id] = await detectProjectFramework(proj);
-      }
-      setProjectFrameworks(results);
-    };
-    detectAll();
-  }, [projects]);
-
-  useEffect(() => {
     localStorage.setItem("orbit_projects", JSON.stringify(projects));
   }, [projects]);
 
@@ -290,9 +306,13 @@ export default function App() {
 
   // Set up Tauri event listeners for background scripts
   useEffect(() => {
+    let disposed = false;
+    const cleanupListeners: Array<() => void> = [];
+
     const setupListeners = async () => {
       // 1. Listen for logs
       const unlistenLog = await listen<LogEventPayload>("script-log", (event) => {
+        if (disposed) return;
         const { project_id, script, line, is_stderr } = event.payload;
         setLogs((prev) => {
           const projectLogs = prev[project_id] || {};
@@ -306,9 +326,15 @@ export default function App() {
           };
         });
       });
+      if (disposed) {
+        unlistenLog();
+        return;
+      }
+      cleanupListeners.push(unlistenLog);
 
       // 2. Listen for process exit
       const unlistenExit = await listen<ExitEventPayload>("script-exit", (event) => {
+        if (disposed) return;
         const { project_id, script, exit_code } = event.payload;
         
         setScriptStatuses((prev) => {
@@ -340,6 +366,11 @@ export default function App() {
           };
         });
       });
+      if (disposed) {
+        unlistenExit();
+        return;
+      }
+      cleanupListeners.push(unlistenExit);
 
       // 3. Sync running states on startup
       try {
@@ -350,18 +381,18 @@ export default function App() {
           if (!initialStatuses[projId]) initialStatuses[projId] = {};
           initialStatuses[projId][scriptName] = "running";
         });
-        setScriptStatuses(initialStatuses);
+        if (!disposed) setScriptStatuses(initialStatuses);
       } catch (err) {
         console.error("Failed to sync running scripts:", err);
       }
 
-      return () => {
-        unlistenLog();
-        unlistenExit();
-      };
     };
 
     setupListeners();
+    return () => {
+      disposed = true;
+      cleanupListeners.forEach(unlisten => unlisten());
+    };
   }, []);
 
   // Fetch branches and git status periodically or on workspace load
@@ -371,48 +402,64 @@ export default function App() {
   );
 
   const fetchGitStates = async () => {
+    const generation = ++scanGeneration.current;
+    const projectsToScan = [...activeWorkspaceProjects];
     const updatedGitStates: Record<string, { branch: string; changes: number }> = {};
     const updatedFrameworks: Record<string, "react" | "next" | "vue" | "svelte" | "express" | "tauri" | "node" | "generic"> = { ...projectFrameworks };
+    setProjectScan({ isLoading: projectsToScan.length > 0, completed: 0, total: projectsToScan.length });
 
-    for (const proj of activeWorkspaceProjects) {
-      try {
-        updatedFrameworks[proj.id] = await detectProjectFramework(proj);
-      } catch (err) {
-        console.error("Failed to detect framework for project:", proj.name, err);
-      }
+    // Inspect only two projects at once: enough parallelism to feel quick without
+    // flooding slower machines with Git and filesystem processes during startup.
+    for (let index = 0; index < projectsToScan.length; index += 2) {
+      const batch = projectsToScan.slice(index, index + 2);
+      await Promise.all(batch.map(async (proj) => {
+        const frameworkPromise = detectProjectFramework(proj);
+        const gitPromise = (async () => {
+          try {
+            const gitExists = await invoke<boolean>("file_exists", { path: `${proj.path}/.git` });
+            if (!gitExists) return { branch: "not a git repo", changes: 0 };
+            const [branchOutput, statusOutput] = await Promise.all([
+              invoke<string>("run_git_command", { path: proj.path, args: ["rev-parse", "--abbrev-ref", "HEAD"] }),
+              invoke<string>("run_git_command", { path: proj.path, args: ["status", "--porcelain", "--untracked-files=normal"] })
+            ]);
+            return {
+              branch: branchOutput.trim(),
+              changes: statusOutput.split("\n").filter(l => l.trim().length > 0).length
+            };
+          } catch {
+            return { branch: "unknown", changes: 0 };
+          }
+        })();
 
-      try {
-        const gitExists = await invoke<boolean>("file_exists", { path: `${proj.path}/.git` });
-        if (gitExists) {
-          const branchOutput = await invoke<string>("run_git_command", {
-            path: proj.path,
-            args: ["rev-parse", "--abbrev-ref", "HEAD"]
-          });
-          const statusOutput = await invoke<string>("run_git_command", {
-            path: proj.path,
-            args: ["status", "--porcelain"]
-          });
-          const changesCount = statusOutput.split("\n").filter(l => l.trim().length > 0).length;
-          updatedGitStates[proj.id] = {
-            branch: branchOutput.trim(),
-            changes: changesCount
-          };
-        } else {
-          updatedGitStates[proj.id] = { branch: "not a git repo", changes: 0 };
+        const [framework, gitInfo] = await Promise.all([frameworkPromise, gitPromise]);
+        updatedFrameworks[proj.id] = framework;
+        updatedGitStates[proj.id] = gitInfo;
+        if (scanGeneration.current === generation) {
+          setProjectGitInfo(prev => ({ ...prev, [proj.id]: gitInfo }));
+          setProjectFrameworks(prev => ({ ...prev, [proj.id]: framework }));
+          setProjectScan(prev => ({ ...prev, completed: prev.completed + 1 }));
         }
-      } catch (err) {
-        updatedGitStates[proj.id] = { branch: "unknown", changes: 0 };
-      }
+      }));
+
+      if (scanGeneration.current !== generation) return;
     }
-    setProjectGitInfo(updatedGitStates);
-    setProjectFrameworks(updatedFrameworks);
+    if (scanGeneration.current === generation) {
+      setProjectGitInfo(updatedGitStates);
+      setProjectFrameworks(updatedFrameworks);
+      setProjectScan({ isLoading: false, completed: projectsToScan.length, total: projectsToScan.length });
+    }
   };
 
   useEffect(() => {
     if (activeWorkspaceProjects.length > 0) {
-      fetchGitStates();
+      const timer = window.setTimeout(fetchGitStates, 250);
+      return () => window.clearTimeout(timer);
+    } else {
+      scanGeneration.current += 1;
+      setProjectGitInfo({});
+      setProjectScan({ isLoading: false, completed: 0, total: 0 });
     }
-  }, [activeWorkspaceId, projects]);
+  }, [activeWorkspaceId, projects, workspaces]);
 
   // Actions
   const handleStartScript = async (projId: string, scriptName: string, path: string) => {
@@ -518,12 +565,23 @@ export default function App() {
   };
 
   const handleSyncAllGit = async () => {
-    setSyncStatus({ isOpen: true, projectName: "All Projects", stage: "idle", progress: [], error: null });
+    setSyncStatus({
+      isOpen: true,
+      projectName: "Preparing repositories",
+      stage: "pulling",
+      progress: [],
+      error: null,
+      completed: 0,
+      total: activeWorkspaceProjects.length
+    });
     
     for (const proj of activeWorkspaceProjects) {
       try {
         const gitExists = await invoke<boolean>("file_exists", { path: `${proj.path}/.git` });
-        if (!gitExists) continue;
+        if (!gitExists) {
+          setSyncStatus(prev => ({ ...prev, completed: prev.completed + 1 }));
+          continue;
+        }
 
         setSyncStatus(prev => ({
           ...prev,
@@ -569,10 +627,16 @@ export default function App() {
 
         setSyncStatus(prev => ({
           ...prev,
+          completed: prev.completed + 1,
           progress: [...prev.progress, `✓ [${proj.name}] Git sync complete.`]
         }));
       } catch (err) {
         console.error(err);
+        setSyncStatus(prev => ({
+          ...prev,
+          completed: prev.completed + 1,
+          progress: [...prev.progress, `Failed to inspect [${proj.name}]: ${err}`]
+        }));
       }
     }
     
@@ -658,6 +722,7 @@ export default function App() {
     const cleanPath = newProjectPath.trim().replace(/\\/g, "/");
     if (!cleanPath) return;
 
+    setIsImporting(true);
     try {
       // Validate path exists
       const exists = await invoke<boolean>("check_directory_exists", { path: cleanPath });
@@ -719,6 +784,31 @@ export default function App() {
       setActiveProjectId(newProjId); // Redirect to new project
     } catch (err: any) {
       setProjectModalError(`Error: ${err}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleOpenEditor = async (project: Project, editor: "vscode" | "cursor") => {
+    const operationKey = `${project.id}:${editor}`;
+    if (openingEditor) return;
+    setOpeningEditor(operationKey);
+    const resolvedPath = project.subDir ? `${project.path}/${project.subDir}` : project.path;
+    try {
+      // Keep the busy state visible briefly because launching a desktop editor
+      // returns before its window has finished appearing.
+      await Promise.all([
+        invoke("open_in_editor", { editor, path: resolvedPath }),
+        new Promise(resolve => window.setTimeout(resolve, 1200))
+      ]);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        title: `Could not open ${editor === "vscode" ? "Visual Studio Code" : "Cursor"}`,
+        message: String(error)
+      });
+    } finally {
+      setOpeningEditor(null);
     }
   };
 
@@ -814,6 +904,24 @@ export default function App() {
             </button>
           </div>
 
+          {projectScan.isLoading && (
+            <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 p-2.5" aria-live="polite">
+              <div className="mb-2 flex items-center justify-between text-[10px] font-semibold text-indigo-300">
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading project details
+                </span>
+                <span>{projectScan.completed}/{projectScan.total}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-[width] duration-300"
+                  style={{ width: `${projectScan.total ? (projectScan.completed / projectScan.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1">
             <button
               onClick={() => setActiveProjectId(null)}
@@ -884,8 +992,34 @@ export default function App() {
                       </div>
                     </button>
 
-                    {/* Quick remove & Terminal buttons */}
+                    {/* Quick editor, terminal, and remove buttons */}
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditor(p, "vscode");
+                        }}
+                        disabled={openingEditor !== null}
+                        className="p-1 bg-slate-950/80 hover:bg-slate-900 rounded transition-all disabled:opacity-50 disabled:cursor-wait"
+                        title="Open in Visual Studio Code"
+                        aria-label={`Open ${p.name} in Visual Studio Code`}
+                      >
+                        {openingEditor === `${p.id}:vscode` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#23A8F2]" /> : <VSCodeIcon className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditor(p, "cursor");
+                        }}
+                        disabled={openingEditor !== null}
+                        className="p-1 bg-slate-950/80 hover:bg-slate-900 rounded transition-all disabled:opacity-50 disabled:cursor-wait"
+                        title="Open in Cursor"
+                        aria-label={`Open ${p.name} in Cursor`}
+                      >
+                        {openingEditor === `${p.id}:cursor` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : <CursorIcon className="w-3.5 h-3.5" />}
+                      </button>
+
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -918,25 +1052,30 @@ export default function App() {
 
         {/* Footer info */}
         <div className="p-4 bg-slate-950/40 border-t border-slate-900 flex items-center justify-between text-slate-500 text-xs">
-          <span className="font-semibold text-[10px] tracking-wider text-slate-600">PROJMAN CLIENT v1.0</span>
+          <span className="font-semibold text-[10px] tracking-wider text-slate-600">PROJMAN CLIENT v1.3</span>
           <button
             onClick={async () => {
+              if (isCheckingUpdate) return;
+              setIsCheckingUpdate(true);
               try {
-                const { invoke } = await import('@tauri-apps/api/core');
                 const result = await invoke<string>('check_for_update');
                 if (result === 'already_latest') {
-                  alert('✅ You are on the latest version!');
+                  setNotice({ tone: "success", title: "ProjMan is up to date", message: "You already have the latest available version." });
                 } else {
-                  alert(`🚀 ${result} — Restarting...`);
+                  setNotice({ tone: "success", title: "Update installed", message: `${result}. ProjMan will restart to finish applying it.` });
                 }
               } catch (e: any) {
-                alert(`Update check failed: ${e}`);
+                setNotice({ tone: "error", title: "Update check failed", message: String(e) });
+              } finally {
+                setIsCheckingUpdate(false);
               }
             }}
+            disabled={isCheckingUpdate}
             title="Check for updates"
-            className="hover:text-slate-300 transition-colors text-[9px] uppercase tracking-wider font-bold hover:text-emerald-400"
+            className="flex items-center gap-1.5 hover:text-slate-300 transition-colors text-[9px] uppercase tracking-wider font-bold hover:text-emerald-400 disabled:opacity-60"
           >
-            Check for Updates
+            {isCheckingUpdate && <Loader2 className="w-3 h-3 animate-spin" />}
+            {isCheckingUpdate ? "Checking..." : "Check for Updates"}
           </button>
         </div>
       </aside>
@@ -1276,6 +1415,26 @@ export default function App() {
                           {/* Quick launch / stop dev button */}
                           <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                             <button
+                              onClick={() => handleOpenEditor(p, "vscode")}
+                              disabled={openingEditor !== null}
+                              className="p-1.5 bg-[#23A8F2]/10 hover:bg-[#23A8F2]/20 border border-[#23A8F2]/20 rounded transition-colors disabled:opacity-50 disabled:cursor-wait"
+                              title="Open in Visual Studio Code"
+                              aria-label={`Open ${p.name} in Visual Studio Code`}
+                            >
+                              {openingEditor === `${p.id}:vscode` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#23A8F2]" /> : <VSCodeIcon className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenEditor(p, "cursor")}
+                              disabled={openingEditor !== null}
+                              className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors disabled:opacity-50 disabled:cursor-wait"
+                              title="Open in Cursor"
+                              aria-label={`Open ${p.name} in Cursor`}
+                            >
+                              {openingEditor === `${p.id}:cursor` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : <CursorIcon className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <button
                               onClick={() => {
                                 setActiveProjectId(p.id);
                                 setActiveTab("terminal");
@@ -1452,6 +1611,19 @@ export default function App() {
               Running git pull & push across repository folders...
             </p>
 
+            <div className="mb-4" aria-live="polite">
+              <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <span>{syncStatus.stage === "idle" ? "Complete" : `Working on ${syncStatus.projectName}`}</span>
+                <span>{syncStatus.completed}/{syncStatus.total}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-950 ring-1 ring-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 transition-[width] duration-500"
+                  style={{ width: `${syncStatus.total ? (syncStatus.completed / syncStatus.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+
             <div className="flex-1 overflow-y-auto bg-slate-950 border border-slate-850 p-4 rounded-lg font-mono text-xs text-slate-300 space-y-2 select-text">
               {syncStatus.progress.map((l, idx) => (
                 <div key={idx} className="whitespace-pre-wrap leading-relaxed">
@@ -1622,12 +1794,50 @@ export default function App() {
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold shadow"
+                disabled={isImporting}
+                className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-wait text-white rounded text-xs font-semibold shadow"
               >
-                Import Folder
+                {isImporting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isImporting ? "Inspecting folder..." : "Import Folder"}
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {openingEditor && (
+        <div className="fixed bottom-5 right-5 z-[70] flex items-center gap-3 rounded-xl border border-indigo-500/20 bg-slate-900/95 px-4 py-3 shadow-2xl backdrop-blur-md" role="status" aria-live="polite">
+          <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+          <div>
+            <div className="text-xs font-bold text-slate-100">
+              Opening {openingEditor.endsWith(":vscode") ? "Visual Studio Code" : "Cursor"}
+            </div>
+            <div className="text-[10px] text-slate-500">Please wait for the editor window...</div>
+          </div>
+        </div>
+      )}
+
+      {/* THEMED APP NOTICE (replaces native browser alerts) */}
+      {notice && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+          <div className="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg border ${
+              notice.tone === "error"
+                ? "border-rose-500/25 bg-rose-500/10 text-rose-400"
+                : notice.tone === "success"
+                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+                  : "border-indigo-500/25 bg-indigo-500/10 text-indigo-400"
+            }`}>
+              {notice.tone === "success" ? <Check className="h-5 w-5" /> : notice.tone === "error" ? <AlertCircle className="h-5 w-5" /> : <Info className="h-5 w-5" />}
+            </div>
+            <h3 id="notice-title" className="text-base font-bold text-slate-100">{notice.title}</h3>
+            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-400">{notice.message}</p>
+            <div className="mt-6 flex justify-end">
+              <button type="button" autoFocus onClick={() => setNotice(null)} className="rounded bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-500">
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

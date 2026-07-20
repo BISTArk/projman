@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::thread;
 use tauri::{Emitter, Manager};
 
@@ -32,10 +33,14 @@ fn kill_process_tree(pid: u32) {
 }
 
 #[tauri::command]
-fn select_directory() -> Option<String> {
-    rfd::FileDialog::new()
-        .pick_folder()
-        .map(|path| path.to_string_lossy().to_string())
+async fn select_directory() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .pick_folder()
+            .map(|path| path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("Failed to open folder picker: {}", e))
 }
 
 #[tauri::command]
@@ -59,20 +64,76 @@ fn write_env_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn run_git_command(path: String, args: Vec<String>) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(&args)
-        .current_dir(&path)
-        .output()
-        .map_err(|e| format!("Failed to execute git command: {}", e))?;
+async fn run_git_command(path: String, args: Vec<String>) -> Result<String, String> {
+    // Git may wait on the network, hooks, or a large worktree. Keeping it on a
+    // blocking worker lets the webview continue painting progress feedback.
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = Command::new("git")
+            .args(&args)
+            .current_dir(&path)
+            .output()
+            .map_err(|e| format!("Failed to execute git command: {}", e))?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(stdout)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(stderr)
-    }
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            Err(if stderr.is_empty() {
+                format!("Git exited with status {}", output.status)
+            } else {
+                stderr
+            })
+        }
+    })
+    .await
+    .map_err(|e| format!("Git worker failed: {}", e))?
+}
+
+#[tauri::command]
+async fn open_in_editor(editor: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !std::path::Path::new(&path).is_dir() {
+            return Err(format!("Project directory does not exist: {}", path));
+        }
+
+        let (display_name, command_name, relative_install_path) = match editor.as_str() {
+            "vscode" => ("Visual Studio Code", "code", "Programs/Microsoft VS Code/Code.exe"),
+            "cursor" => ("Cursor", "cursor", "Programs/cursor/Cursor.exe"),
+            _ => return Err("Unsupported editor requested".to_string()),
+        };
+
+        let mut candidates = Vec::<PathBuf>::new();
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(local_app_data).join(relative_install_path));
+        }
+        if let Some(program_files) = std::env::var_os("ProgramFiles") {
+            let executable = if editor == "vscode" {
+                "Microsoft VS Code/Code.exe"
+            } else {
+                "Cursor/Cursor.exe"
+            };
+            candidates.push(PathBuf::from(program_files).join(executable));
+        }
+
+        for executable in candidates.iter().filter(|candidate| candidate.exists()) {
+            if Command::new(executable).arg(&path).spawn().is_ok() {
+                return Ok(());
+            }
+        }
+
+        Command::new(command_name)
+            .arg(&path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| {
+                format!(
+                    "{} is not installed or its command is not available in PATH.",
+                    display_name
+                )
+            })
+    })
+    .await
+    .map_err(|e| format!("Editor launcher failed: {}", e))?
 }
 
 #[tauri::command]
@@ -392,6 +453,7 @@ pub fn run() {
             read_file,
             write_env_file,
             run_git_command,
+            open_in_editor,
             start_project_script,
             stop_project_script,
             stop_all_project_scripts,

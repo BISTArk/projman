@@ -29,6 +29,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
   const [selectedFileDiff, setSelectedFileDiff] = useState<string | null>(null);
   const [diffContent, setDiffContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("Loading repository details...");
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
@@ -93,6 +94,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
 
   const refreshGitState = async () => {
     if (!projectPath) return;
+    setLoadingLabel("Refreshing repository details...");
     setLoading(true);
     setError(null);
     try {
@@ -209,6 +211,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
   };
 
   const handleCheckoutBranch = async (branchName: string) => {
+    setLoadingLabel(`Switching to ${branchName.replace("remotes/", "")}...`);
     setLoading(true);
     try {
       let target = branchName;
@@ -220,7 +223,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
       }
       await runGit(["checkout", target]);
       showSuccess(`Checked out branch ${target}`);
-      refreshGitState();
+      await refreshGitState();
     } catch (err: any) {
       setError(`Checkout failed: ${err}`);
     } finally {
@@ -231,12 +234,13 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
   const handleCommit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commitMessage.trim()) return;
+    setLoadingLabel("Creating commit...");
     setLoading(true);
     try {
       await runGit(["commit", "-m", commitMessage]);
       showSuccess("Commit successful!");
       setCommitMessage("");
-      refreshGitState();
+      await refreshGitState();
     } catch (err: any) {
       setError(`Commit failed: ${err}`);
     } finally {
@@ -245,11 +249,12 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
   };
 
   const handlePull = async () => {
+    setLoadingLabel("Pulling remote updates...");
     setLoading(true);
     try {
       const output = await runGit(["pull"]);
       showSuccess(`Pulled successfully:\n${output}`);
-      refreshGitState();
+      await refreshGitState();
     } catch (err: any) {
       setError(`Pull failed: ${err}`);
     } finally {
@@ -258,11 +263,12 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
   };
 
   const handlePush = async () => {
+    setLoadingLabel("Pushing local commits...");
     setLoading(true);
     try {
       const output = await runGit(["push"]);
       showSuccess(`Pushed successfully:\n${output}`);
-      refreshGitState();
+      await refreshGitState();
     } catch (err: any) {
       setError(`Push failed: ${err}`);
     } finally {
@@ -346,6 +352,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({ projectPath, projectId }) =>
               </button>
             </div>
           </div>
+
+          {loading && (
+            <div className="space-y-1.5" aria-live="polite">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-indigo-300">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                {loadingLabel}
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 animate-[operation-progress_1.4s_ease-in-out_infinite]" />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2.5">
             {/* Branch Selector */}

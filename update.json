@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0",
-  "notes": "Initial release of ProjMan — Local Development Command Center",
-  "pub_date": "2026-07-12T00:00:00Z",
+  "version": "1.3.0",
+  "notes": "Themed dialogs, responsive Git and command progress, smoother startup and imports, editor launch shortcuts, and duplicate terminal output fixes.",
+  "pub_date": "2026-07-20T14:14:39Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/BISTArk/projman/releases/download/v1.0.0/ProjMan_0.1.0_x64-setup.exe",
-      "signature": "PASTE_SIGNATURE_HERE"
+      "url": "https://github.com/BISTArk/projman/releases/download/v1.3.0/ProjMan_1.3.0_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdmFvTW1NMmFxZ3NlckMrVkg0aE83MjU2UTArbENXd1VHcjJuRUNHK09DUVBwTDVpT2k2N2xMLzBmTzNQRDEzTWdRM1pBNkw1SDFhVmZqelAxTGRIRFpiSlQzNTFISmdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTU2ODU5CWZpbGU6UHJvak1hbl8xLjMuMF94NjQtc2V0dXAuZXhlCjNJcFBUbEYzY1VkZnJBeFJhMDZvS241K2RwUG1TRk9pUWJ6Z2lJYnVaak9qQWxRcksyNXh6ZDNOdlZpMzZ6Uk1BUDdtZUpGc3U4RVlzQ2I4UTc4UUFRPT0K"
     }
   }
 }
