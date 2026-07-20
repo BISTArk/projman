@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Terminal as TerminalIcon, Trash2, Copy, ArrowDown, Search } from "lucide-react";
 
 interface ScriptLog {
@@ -11,20 +11,19 @@ interface TerminalProps {
   onClear: () => void;
 }
 
-export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
+const cleanAnsi = (text: string) => {
+  return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
+};
+
+export const Terminal: React.FC<TerminalProps> = memo(({ logs, onClear }) => {
   const [filter, setFilter] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Clean ANSI escape sequences
-  const cleanAnsi = (text: string) => {
-    return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
-  };
-
   useEffect(() => {
     if (autoScroll && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+      bottomRef.current.scrollIntoView({ behavior: "auto" });
     }
   }, [logs, autoScroll]);
 
@@ -42,9 +41,12 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
     navigator.clipboard.writeText(rawText);
   };
 
-  const filteredLogs = logs.filter(log =>
-    cleanAnsi(log.line).toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredLogs = useMemo(() => {
+    const query = filter.toLowerCase();
+    return logs
+      .map(log => ({ ...log, cleaned: cleanAnsi(log.line) }))
+      .filter(log => log.cleaned.toLowerCase().includes(query));
+  }, [logs, filter]);
 
   const handleUrlClick = async (url: string, e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -137,7 +139,7 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 p-4 overflow-y-auto space-y-1.5 scrollbar-thin select-text selection:bg-indigo-500/30"
+        className="flex-1 p-4 overflow-y-auto space-y-1.5 scrollbar-hidden select-text selection:bg-indigo-500/30"
       >
         {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-600 italic">
@@ -145,7 +147,6 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
           </div>
         ) : (
           filteredLogs.map((log, idx) => {
-            const cleaned = cleanAnsi(log.line);
             return (
               <div
                 key={idx}
@@ -153,7 +154,7 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
                   log.isStderr ? "text-rose-400 selection:bg-rose-500/20" : "text-slate-300"
                 }`}
               >
-                {renderLineWithUrls(cleaned)}
+                {renderLineWithUrls(log.cleaned)}
               </div>
             );
           })
@@ -162,4 +163,6 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onClear }) => {
       </div>
     </div>
   );
-};
+});
+
+Terminal.displayName = "Terminal";

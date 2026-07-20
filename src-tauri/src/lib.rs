@@ -2,13 +2,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::process::ChildStdin;
 use std::thread;
 use tauri::{Emitter, Manager};
 
 pub struct ProcessState {
-    pub processes: Arc<Mutex<HashMap<String, u32>>>,
+    processes: Arc<Mutex<HashMap<String, u32>>>,
+    inputs: Arc<Mutex<HashMap<String, ChildStdin>>>,
+    script_logs: Arc<Mutex<HashMap<String, Vec<LogPayload>>>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -26,10 +29,29 @@ struct ExitPayload {
     exit_code: i32,
 }
 
-fn kill_process_tree(pid: u32) {
-    let _ = std::process::Command::new("taskkill")
+fn append_script_log(
+    logs: &Arc<Mutex<HashMap<String, Vec<LogPayload>>>>,
+    key: &str,
+    payload: LogPayload,
+) {
+    let mut all_logs = logs.lock().unwrap();
+    let terminal_logs = all_logs.entry(key.to_string()).or_default();
+    terminal_logs.push(payload);
+    if terminal_logs.len() > 2_000 {
+        terminal_logs.drain(..terminal_logs.len() - 2_000);
+    }
+}
+
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    let output = std::process::Command::new("taskkill")
         .args(&["/F", "/T", "/PID", &pid.to_string()])
-        .status();
+        .output()
+        .map_err(|e| format!("Failed to run taskkill: {}", e))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
 }
 
 #[tauri::command]
@@ -136,13 +158,13 @@ async fn open_in_editor(editor: String, path: String) -> Result<(), String> {
     .map_err(|e| format!("Editor launcher failed: {}", e))?
 }
 
-#[tauri::command]
-fn start_project_script(
-    state: tauri::State<'_, ProcessState>,
+fn start_tracked_process(
+    state: &ProcessState,
     window: tauri::Window,
     project_id: String,
     script: String,
     path: String,
+    command: String,
 ) -> Result<(), String> {
     let key = format!("{}:{}", project_id, script);
 
@@ -154,25 +176,18 @@ fn start_project_script(
         }
     }
 
-    // Detect package manager
-    let package_manager = if std::path::Path::new(&path).join("pnpm-lock.yaml").exists() {
-        "pnpm"
-    } else if std::path::Path::new(&path).join("yarn.lock").exists() {
-        "yarn"
-    } else {
-        "npm"
-    };
-
     // Spawn the command on Windows using cmd
     let mut child = Command::new("cmd")
-        .args(&["/C", &format!("{} run {}", package_manager, script)])
+        .args(["/C", &command])
         .current_dir(&path)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
     let pid = child.id();
+    let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
     let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
 
@@ -181,9 +196,21 @@ fn start_project_script(
         let mut map = state.processes.lock().unwrap();
         map.insert(key.clone(), pid);
     }
+    state.inputs.lock().unwrap().insert(key.clone(), stdin);
+
+    let command_payload = LogPayload {
+        project_id: project_id.clone(),
+        script: script.clone(),
+        line: format!("> {}", command),
+        is_stderr: false,
+    };
+    append_script_log(&state.script_logs, &key, command_payload.clone());
+    let _ = window.emit("script-log", command_payload);
 
     // Spawn monitor threads
     let processes_map = state.processes.clone();
+    let inputs_map = state.inputs.clone();
+    let logs_map = state.script_logs.clone();
     let window_clone = window.clone();
     let project_id_clone = project_id.clone();
     let script_clone = script.clone();
@@ -193,16 +220,20 @@ fn start_project_script(
         let w1 = window_clone.clone();
         let p1 = project_id_clone.clone();
         let s1 = script_clone.clone();
+        let k1 = key_clone.clone();
+        let logs1 = logs_map.clone();
         let t_stdout = thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 if let Ok(line_str) = line {
-                    let _ = w1.emit("script-log", LogPayload {
+                    let payload = LogPayload {
                         project_id: p1.clone(),
                         script: s1.clone(),
                         line: line_str,
                         is_stderr: false,
-                    });
+                    };
+                    append_script_log(&logs1, &k1, payload.clone());
+                    let _ = w1.emit("script-log", payload);
                 }
             }
         });
@@ -210,16 +241,20 @@ fn start_project_script(
         let w2 = window_clone.clone();
         let p2 = project_id_clone.clone();
         let s2 = script_clone.clone();
+        let k2 = key_clone.clone();
+        let logs2 = logs_map.clone();
         let t_stderr = thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines() {
                 if let Ok(line_str) = line {
-                    let _ = w2.emit("script-log", LogPayload {
+                    let payload = LogPayload {
                         project_id: p2.clone(),
                         script: s2.clone(),
                         line: line_str,
                         is_stderr: true,
-                    });
+                    };
+                    append_script_log(&logs2, &k2, payload.clone());
+                    let _ = w2.emit("script-log", payload);
                 }
             }
         });
@@ -238,9 +273,20 @@ fn start_project_script(
                 }
             }
         }
+        inputs_map.lock().unwrap().remove(&key_clone);
 
         // Emit exit event
         let exit_code = status.ok().and_then(|s| s.code()).unwrap_or(-1);
+        append_script_log(
+            &logs_map,
+            &key_clone,
+            LogPayload {
+                project_id: project_id_clone.clone(),
+                script: script_clone.clone(),
+                line: format!("\n[Process terminated with code {}]", exit_code),
+                is_stderr: exit_code != 0,
+            },
+        );
         let _ = window_clone.emit("script-exit", ExitPayload {
             project_id: project_id_clone,
             script: script_clone,
@@ -252,15 +298,101 @@ fn start_project_script(
 }
 
 #[tauri::command]
+fn start_project_script(
+    state: tauri::State<'_, ProcessState>,
+    window: tauri::Window,
+    project_id: String,
+    script: String,
+    path: String,
+) -> Result<(), String> {
+    let package_manager = if std::path::Path::new(&path).join("pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else if std::path::Path::new(&path).join("yarn.lock").exists() {
+        "yarn"
+    } else {
+        "npm"
+    };
+    let command = format!("{} run {}", package_manager, script);
+    start_tracked_process(state.inner(), window, project_id, script, path, command)
+}
+
+#[tauri::command]
+fn start_project_command(
+    state: tauri::State<'_, ProcessState>,
+    window: tauri::Window,
+    project_id: String,
+    terminal_id: String,
+    path: String,
+    command: String,
+) -> Result<(), String> {
+    if command.trim().is_empty() {
+        return Err("Command cannot be empty".to_string());
+    }
+    start_tracked_process(state.inner(), window, project_id, terminal_id, path, command)
+}
+
+#[tauri::command]
+fn send_project_script_input(
+    state: tauri::State<'_, ProcessState>,
+    window: tauri::Window,
+    project_id: String,
+    script: String,
+    input: String,
+) -> Result<(), String> {
+    let key = format!("{}:{}", project_id, script);
+    let payload = LogPayload {
+        project_id: project_id.clone(),
+        script: script.clone(),
+        line: format!("> {}", input),
+        is_stderr: false,
+    };
+    let mut inputs = state.inputs.lock().unwrap();
+    let stdin = inputs.get_mut(&key).ok_or("Terminal is not accepting input")?;
+    stdin
+        .write_all(format!("{}\n", input).as_bytes())
+        .and_then(|_| stdin.flush())
+        .map_err(|e| format!("Failed to send terminal input: {}", e))?;
+    append_script_log(&state.script_logs, &key, payload.clone());
+    let _ = window.emit("script-log", payload);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_script_logs(state: tauri::State<'_, ProcessState>) -> Vec<LogPayload> {
+    state
+        .script_logs
+        .lock()
+        .unwrap()
+        .values()
+        .flat_map(|entries| entries.clone())
+        .collect()
+}
+
+#[tauri::command]
+fn clear_project_script_logs(
+    state: tauri::State<'_, ProcessState>,
+    project_id: String,
+    script: String,
+) {
+    state
+        .script_logs
+        .lock()
+        .unwrap()
+        .remove(&format!("{}:{}", project_id, script));
+}
+
+#[tauri::command]
 fn stop_project_script(
     state: tauri::State<'_, ProcessState>,
     project_id: String,
     script: String,
 ) -> Result<(), String> {
     let key = format!("{}:{}", project_id, script);
-    let mut map = state.processes.lock().unwrap();
-    if let Some(pid) = map.remove(&key) {
-        kill_process_tree(pid);
+    let pid = state.processes.lock().unwrap().get(&key).copied();
+    if let Some(pid) = pid {
+        kill_process_tree(pid)?;
+        state.processes.lock().unwrap().remove(&key);
+        state.inputs.lock().unwrap().remove(&key);
         Ok(())
     } else {
         Err("Script is not running".to_string())
@@ -271,9 +403,10 @@ fn stop_project_script(
 fn stop_all_project_scripts(state: tauri::State<'_, ProcessState>) -> Result<(), String> {
     let mut map = state.processes.lock().unwrap();
     for &pid in map.values() {
-        kill_process_tree(pid);
+        let _ = kill_process_tree(pid);
     }
     map.clear();
+    state.inputs.lock().unwrap().clear();
     Ok(())
 }
 
@@ -401,7 +534,7 @@ fn stop_terminal_command(
     let key = format!("{}:terminal", project_id);
     let mut map = state.processes.lock().unwrap();
     if let Some(pid) = map.remove(&key) {
-        kill_process_tree(pid);
+        let _ = kill_process_tree(pid);
         Ok(())
     } else {
         Err("No terminal command is running".to_string())
@@ -436,13 +569,15 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ProcessState {
             processes: Arc::new(Mutex::new(HashMap::new())),
+            inputs: Arc::new(Mutex::new(HashMap::new())),
+            script_logs: Arc::new(Mutex::new(HashMap::new())),
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.state::<ProcessState>();
                 let mut map = state.processes.lock().unwrap();
                 for &pid in map.values() {
-                    kill_process_tree(pid);
+                    let _ = kill_process_tree(pid);
                 }
                 map.clear();
             }
@@ -455,6 +590,10 @@ pub fn run() {
             run_git_command,
             open_in_editor,
             start_project_script,
+            start_project_command,
+            send_project_script_input,
+            get_script_logs,
+            clear_project_script_logs,
             stop_project_script,
             stop_all_project_scripts,
             get_running_scripts,

@@ -9,6 +9,36 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-wall-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 900px) {
+  .terminal-wall-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .terminal-wall-grid.is-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 899px) {
+  .terminal-wall-grid {
+    grid-template-rows: none !important;
+    grid-auto-rows: minmax(300px, 1fr) !important;
+  }
+}
+
 @keyframes operation-progress {
   0% { transform: translateX(-110%); }
   50% { transform: translateX(110%); }
@@ -49,6 +79,28 @@ button:disabled {
   
   --color-emerald-500: #10b981;
   --color-emerald-400: #10b981;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --color-slate-950: #f6f8fb;
+  --color-slate-900: #ffffff;
+  --color-slate-850: #eef2f7;
+  --color-slate-800: rgba(15, 23, 42, 0.11);
+  --color-slate-700: #94a3b8;
+  --color-slate-600: #64748b;
+  --color-slate-500: #64748b;
+  --color-slate-400: #475569;
+  --color-slate-300: #334155;
+  --color-slate-200: #1e293b;
+  --color-slate-100: #0f172a;
+  --color-indigo-950: rgba(5, 150, 105, 0.07);
+  --color-indigo-900: rgba(5, 150, 105, 0.18);
+  --color-indigo-400: #059669;
+  --color-indigo-500: #059669;
+  --color-indigo-600: #059669;
+  --color-emerald-400: #059669;
+  --color-emerald-500: #059669;
 }
 
 @layer base {
@@ -116,4 +168,30 @@ button:disabled {
   border-color: rgba(59, 130, 246, 0.3);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
   transform: translateY(-2px);
+}
+
+html[data-theme="light"] .glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+html[data-theme="light"] .glass-card {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+html[data-theme="light"] .glass-card:hover {
+  background: #ffffff;
+  border-color: rgba(5, 150, 105, 0.25);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f6f8fb;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-color: rgba(15, 23, 42, 0.08);
 }
