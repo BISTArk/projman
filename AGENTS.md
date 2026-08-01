@@ -17,9 +17,9 @@ Keep `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` on 
 
 ## Releases
 
-Desktop releases are created by `.github/workflows/release.yml` from `v*` tags. Every release must include Windows NSIS/MSI artifacts, a universal macOS DMG, signed updater artifacts, and a unified updater manifest. `src-tauri/tauri.release.conf.json` enables updater artifact generation only in the signed release workflow so ordinary local builds remain usable.
+Desktop releases are assembled manually in a draft GitHub release. Every release must include Windows NSIS/MSI artifacts, a universal macOS DMG, signed updater artifacts, and a unified updater manifest. `src-tauri/tauri.release.conf.json` enables updater artifact generation only for signed release builds so ordinary local builds remain usable. Use `scripts/release-windows.ps1` on the Windows release machine.
 
-Required GitHub Actions secrets are `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Optional Apple Developer signing and notarization secrets are documented in `README.md`. Never commit signing keys, certificates, passwords, or notarization credentials.
+The updater private key belongs only in the Git-ignored `.secrets/` directory on release machines. Optional Apple Developer signing and notarization credentials are documented in `README.md`. Never commit signing keys, certificates, passwords, or notarization credentials.
 
 ## Landing page
 

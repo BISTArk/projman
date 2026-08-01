@@ -111,15 +111,23 @@ ProjMan includes a `Makefile` to streamline common compilation tasks:
 
 ## Cross-platform releases and automatic updates
 
-Push a version tag such as `v1.5.0` to run `.github/workflows/release.yml`. The workflow verifies that `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` all match the tag, then publishes:
+ProjMan releases can be assembled manually without paid CI runners. Keep `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` aligned with the release tag, then publish:
 
 * Windows x64 NSIS (`.exe`) and MSI installers.
 * A universal macOS app and `.dmg` for Apple Silicon and Intel Macs.
-* Signed updater archives and one `latest.json` manifest covering both operating systems.
+* Signed updater archives and one `update.json` manifest covering both operating systems.
 * The same manifest at `docs/update.json`, which keeps existing ProjMan installations on the shared update channel.
 
-The repository must define `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. The private key must match the updater public key in `src-tauri/tauri.conf.json`; changing it would prevent existing installations from accepting new updates.
+The private key in `.secrets/projman.key` must match the updater public key in `src-tauri/tauri.conf.json`; changing it would prevent existing installations from accepting new updates. `.secrets/` is ignored by Git and must never be committed.
 
-For a macOS build that opens without Gatekeeper warnings, also configure `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`. Without those optional Apple credentials, CI creates an ad-hoc-signed DMG that users may need to approve once in macOS Privacy & Security.
+On the Windows release machine, pull the tag and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\release-windows.ps1
+```
+
+The script prompts securely for the updater-key password, creates signed NSIS/MSI updater artifacts, clears the signing environment, and uploads the four Windows files to the existing draft GitHub release. macOS artifacts are built with `src-tauri/tauri.release.conf.json` on a Mac and uploaded to the same draft. Publish the draft only after `update.json` contains both `windows-x86_64` and the two macOS architecture entries.
+
+For a macOS build that opens without Gatekeeper warnings, configure Apple Developer signing and notarization credentials in the local build environment. Without those credentials, the ad-hoc-signed DMG may need one-time approval in macOS Privacy & Security.
 
 The landing page is built from `promo-site/` directly into `docs/`, the GitHub Pages source. It detects macOS or Windows in the browser, puts the matching download first, and resolves the actual installer asset from the latest GitHub release.
