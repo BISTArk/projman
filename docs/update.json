@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0",
-  "notes": "A major polish release with smooth transitions and loading states, a fully accessible light theme across the app and landing page, editable package scripts, improved project actions, and multi-root VS Code and Cursor workspace launching.",
-  "pub_date": "2026-08-01T10:02:21Z",
+  "version": "1.4.1",
+  "notes": "Fixes unwanted Windows terminal windows appearing when running package scripts, embedded terminal commands, Git checks, or process cleanup. Background commands now stay hidden while output continues streaming inside ProjMan.",
+  "pub_date": "2026-08-01T10:11:59Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/BISTArk/projman/releases/download/v1.4.0/ProjMan_1.4.0_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdmFvTW1NMmFxZ2hlYlQrUGZ2N21SNENvU2lodkxDcng2VXZWOXBjVFc5NTVFWTZJd0l0NEdsb1hYVnVSMlVveWlRMHVQVWZGNENvL1hKTHVZY21kdnNOL2EwYUVsMVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NTc4NDg4CWZpbGU6UHJvak1hbl8xLjQuMF94NjQtc2V0dXAuZXhlCjg2M0pacTJJbUt2Q3BnMGZKYnArejdLWW42K0laTElyYnVUSEdyUWZCbGpaTDF1NXo3dCtUelV2dFIwaC9YbXJGbWR2MVpUQnl5VVdGU1FaNGhpZ0J3PT0K"
+      "url": "https://github.com/BISTArk/projman/releases/download/v1.4.1/ProjMan_1.4.1_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdmFvTW1NMmFxZ3RWcGFMaWEzQkx2MVpWV1NWaTNkTlNsaXFmRFlzcVFlTVlLejlkMHRsMXJlUk4rVUsweFBIbGZjRk5LVlFZZGhHOEtMMXFIWC9XWGdKMGVYOFhiakFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NTc5MDk4CWZpbGU6UHJvak1hbl8xLjQuMV94NjQtc2V0dXAuZXhlCjdBS0hMWm5wSU00K01DRjFYRW55bFY1bkNva25YZ0pMbUtxTEJYaXFmZmFvS0xFRHV3WlR0YlRlSlUvWER5VEpFRGh6WDFldjNhcUZpb2QweUNMckRnPT0K"
     }
   }
 }

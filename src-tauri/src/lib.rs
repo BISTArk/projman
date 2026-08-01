@@ -1,12 +1,22 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::ChildStdin;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Emitter, Manager};
+
+#[cfg(windows)]
+fn hide_console_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_console_window(_command: &mut Command) {}
 
 pub struct ProcessState {
     processes: Arc<Mutex<HashMap<String, u32>>>,
@@ -43,8 +53,10 @@ fn append_script_log(
 }
 
 fn kill_process_tree(pid: u32) -> Result<(), String> {
-    let output = std::process::Command::new("taskkill")
-        .args(&["/F", "/T", "/PID", &pid.to_string()])
+    let mut command = std::process::Command::new("taskkill");
+    command.args(["/F", "/T", "/PID", &pid.to_string()]);
+    hide_console_window(&mut command);
+    let output = command
         .output()
         .map_err(|e| format!("Failed to run taskkill: {}", e))?;
     if output.status.success() {
@@ -115,9 +127,10 @@ async fn run_git_command(path: String, args: Vec<String>) -> Result<String, Stri
     // Git may wait on the network, hooks, or a large worktree. Keeping it on a
     // blocking worker lets the webview continue painting progress feedback.
     tauri::async_runtime::spawn_blocking(move || {
-        let output = Command::new("git")
-            .args(&args)
-            .current_dir(&path)
+        let mut command = Command::new("git");
+        command.args(&args).current_dir(&path);
+        hide_console_window(&mut command);
+        let output = command
             .output()
             .map_err(|e| format!("Failed to execute git command: {}", e))?;
 
@@ -138,7 +151,11 @@ async fn run_git_command(path: String, args: Vec<String>) -> Result<String, Stri
 
 fn launch_editor_target(editor: &str, target: &std::path::Path) -> Result<(), String> {
     let (display_name, command_name, relative_install_path) = match editor {
-        "vscode" => ("Visual Studio Code", "code", "Programs/Microsoft VS Code/Code.exe"),
+        "vscode" => (
+            "Visual Studio Code",
+            "code",
+            "Programs/Microsoft VS Code/Code.exe",
+        ),
         "cursor" => ("Cursor", "cursor", "Programs/cursor/Cursor.exe"),
         _ => return Err("Unsupported editor requested".to_string()),
     };
@@ -233,7 +250,9 @@ async fn open_workspace_in_editor(
 
         let safe_id: String = workspace_id
             .chars()
-            .filter(|character| character.is_ascii_alphanumeric() || *character == '-' || *character == '_')
+            .filter(|character| {
+                character.is_ascii_alphanumeric() || *character == '-' || *character == '_'
+            })
             .collect();
         let safe_id = if safe_id.is_empty() {
             "workspace".to_string()
@@ -272,12 +291,15 @@ fn start_tracked_process(
     }
 
     // Spawn the command on Windows using cmd
-    let mut child = Command::new("cmd")
+    let mut process_command = Command::new("cmd");
+    process_command
         .args(["/C", &command])
         .current_dir(&path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console_window(&mut process_command);
+    let mut child = process_command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
@@ -382,11 +404,14 @@ fn start_tracked_process(
                 is_stderr: exit_code != 0,
             },
         );
-        let _ = window_clone.emit("script-exit", ExitPayload {
-            project_id: project_id_clone,
-            script: script_clone,
-            exit_code,
-        });
+        let _ = window_clone.emit(
+            "script-exit",
+            ExitPayload {
+                project_id: project_id_clone,
+                script: script_clone,
+                exit_code,
+            },
+        );
     });
 
     Ok(())
@@ -423,7 +448,14 @@ fn start_project_command(
     if command.trim().is_empty() {
         return Err("Command cannot be empty".to_string());
     }
-    start_tracked_process(state.inner(), window, project_id, terminal_id, path, command)
+    start_tracked_process(
+        state.inner(),
+        window,
+        project_id,
+        terminal_id,
+        path,
+        command,
+    )
 }
 
 #[tauri::command]
@@ -442,7 +474,9 @@ fn send_project_script_input(
         is_stderr: false,
     };
     let mut inputs = state.inputs.lock().unwrap();
-    let stdin = inputs.get_mut(&key).ok_or("Terminal is not accepting input")?;
+    let stdin = inputs
+        .get_mut(&key)
+        .ok_or("Terminal is not accepting input")?;
     stdin
         .write_all(format!("{}\n", input).as_bytes())
         .and_then(|_| stdin.flush())
@@ -542,11 +576,14 @@ fn run_terminal_command(
     }
 
     // Spawn command shell (cmd /C on Windows)
-    let mut child = Command::new("cmd")
-        .args(&["/C", &command])
+    let mut process_command = Command::new("cmd");
+    process_command
+        .args(["/C", &command])
         .current_dir(&cwd)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console_window(&mut process_command);
+    let mut child = process_command
         .spawn()
         .map_err(|e| format!("Failed to run command: {}", e))?;
 
@@ -572,11 +609,14 @@ fn run_terminal_command(
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 if let Ok(line_str) = line {
-                    let _ = w1.emit("terminal-log", TerminalLogPayload {
-                        project_id: p1.clone(),
-                        line: line_str,
-                        is_stderr: false,
-                    });
+                    let _ = w1.emit(
+                        "terminal-log",
+                        TerminalLogPayload {
+                            project_id: p1.clone(),
+                            line: line_str,
+                            is_stderr: false,
+                        },
+                    );
                 }
             }
         });
@@ -587,11 +627,14 @@ fn run_terminal_command(
             let reader = BufReader::new(stderr);
             for line in reader.lines() {
                 if let Ok(line_str) = line {
-                    let _ = w2.emit("terminal-log", TerminalLogPayload {
-                        project_id: p2.clone(),
-                        line: line_str,
-                        is_stderr: true,
-                    });
+                    let _ = w2.emit(
+                        "terminal-log",
+                        TerminalLogPayload {
+                            project_id: p2.clone(),
+                            line: line_str,
+                            is_stderr: true,
+                        },
+                    );
                 }
             }
         });
@@ -612,10 +655,13 @@ fn run_terminal_command(
 
         // Emit exit event
         let exit_code = status.ok().and_then(|s| s.code()).unwrap_or(-1);
-        let _ = window_clone.emit("terminal-exit", TerminalExitPayload {
-            project_id: project_id_clone,
-            exit_code,
-        });
+        let _ = window_clone.emit(
+            "terminal-exit",
+            TerminalExitPayload {
+                project_id: project_id_clone,
+                exit_code,
+            },
+        );
     });
 
     Ok(())
@@ -645,7 +691,9 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<String, String> {
                 Ok(Some(update)) => {
                     let version = update.version.clone();
                     // Install the update (downloads and relaunches)
-                    update.download_and_install(|_, _| {}, || {}).await
+                    update
+                        .download_and_install(|_, _| {}, || {})
+                        .await
                         .map_err(|e| format!("Failed to install update: {}", e))?;
                     Ok(format!("Updated to v{}", version))
                 }
