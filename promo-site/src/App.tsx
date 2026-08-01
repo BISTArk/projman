@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Zap, 
   Download, 
   ArrowRight, 
-  Check
+  Check,
+  Moon,
+  Sun
 } from "lucide-react";
 
 // Inline Github Icon SVG
@@ -21,9 +24,44 @@ export default function App() {
 
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const saved = localStorage.getItem("projman_site_theme");
+    const initialTheme = saved === "light" || saved === "dark"
+      ? saved
+      : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    document.documentElement.dataset.theme = initialTheme;
+    return initialTheme;
+  });
 
   // FAQ states
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("projman_site_theme", theme);
+  }, [theme]);
+
+  const handleThemeToggle = () => {
+    const root = document.documentElement;
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    const applyTheme = () => {
+      root.dataset.theme = nextTheme;
+      flushSync(() => setTheme(nextTheme));
+    };
+    const documentWithTransitions = document as Document & {
+      startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+    };
+
+    root.classList.add("theme-transition");
+    if (documentWithTransitions.startViewTransition) {
+      documentWithTransitions.startViewTransition(applyTheme).finished.finally(() => {
+        root.classList.remove("theme-transition");
+      });
+    } else {
+      applyTheme();
+      window.setTimeout(() => root.classList.remove("theme-transition"), 520);
+    }
+  };
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -32,7 +70,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#030406] text-slate-200 overflow-x-hidden selection:bg-emerald-500/20 relative">
+    <div className="landing-shell min-h-screen text-slate-200 overflow-x-hidden selection:bg-emerald-500/20 relative">
       
       {/* Ambient Gradient Background Glows */}
       <div className="absolute top-0 inset-x-0 h-[1000px] grid-bg pointer-events-none opacity-60 z-0" />
@@ -46,7 +84,7 @@ export default function App() {
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 bg-[#0c0f16] border border-emerald-500/30 text-slate-100 px-4 py-3 rounded-lg shadow-2xl flex items-center gap-2.5 text-xs font-semibold"
+            className="site-toast fixed bottom-6 right-6 z-50 border border-emerald-500/30 text-slate-100 px-4 py-3 rounded-lg shadow-2xl flex items-center gap-2.5 text-xs font-semibold"
           >
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>{toastMessage}</span>
@@ -55,7 +93,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* HEADER / NAVIGATION */}
-      <nav className="h-16 flex items-center justify-between px-6 md:px-12 border-b border-slate-900 bg-[#030406]/70 backdrop-blur-md sticky top-0 z-40 select-none">
+      <nav className="site-nav h-16 flex items-center justify-between px-4 sm:px-6 md:px-12 border-b border-slate-900 backdrop-blur-md sticky top-0 z-40 select-none">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-850 flex items-center justify-center shadow-lg shadow-black/25">
             <svg className="w-4.5 h-4.5 text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -78,6 +116,18 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3.5">
+          <button
+            type="button"
+            onClick={handleThemeToggle}
+            className="theme-toggle flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-850 bg-slate-900 text-slate-400 hover:border-emerald-500/30 hover:text-emerald-400"
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            aria-pressed={theme === "light"}
+          >
+            <span key={theme} className="theme-toggle__glyph">
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </span>
+          </button>
           <a 
             href={GITHUB_REPO_URL}
             target="_blank"
@@ -92,7 +142,7 @@ export default function App() {
             className="btn-primary inline-flex items-center justify-center px-4 py-2 rounded-lg text-xs font-extrabold gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download Latest</span>
+            <span className="hidden sm:inline">Download Latest</span>
           </a>
         </div>
       </nav>
@@ -180,14 +230,14 @@ export default function App() {
           initial={{ opacity: 0, scale: 0.98, y: 30 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="w-full rounded-xl border border-slate-800 bg-[#07090e]/90 p-1.5 shadow-2xl relative overflow-hidden"
+          className="showcase-frame w-full rounded-xl border border-slate-800 p-1.5 shadow-2xl relative overflow-hidden"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-blue-500/5 rounded-xl pointer-events-none -z-10" />
 
           {/* Desktop Frameless Window Frame */}
-          <div className="bg-[#030406] rounded-lg overflow-hidden border border-slate-850 flex flex-col">
+          <div className="showcase-window rounded-lg overflow-hidden border border-slate-850 flex flex-col">
             {/* Native window header */}
-            <div className="h-10 border-b border-slate-900 flex items-center justify-between px-4 bg-slate-950/80">
+            <div className="showcase-toolbar h-10 border-b border-slate-900 flex items-center justify-between px-4 bg-slate-950/80">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-rose-500/60" />
@@ -226,28 +276,28 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-[#080a0f] border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
+          <div className="site-card border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
             <h3 className="text-sm font-bold text-slate-200">Endless Terminal Tabs</h3>
             <p className="text-xs text-slate-450 leading-relaxed">
               Juggling multiple terminals for mock servers, client dev servers, api compilers, and databases.
             </p>
           </div>
 
-          <div className="bg-[#080a0f] border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
+          <div className="site-card border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
             <h3 className="text-sm font-bold text-slate-200">Forgotten Environment Keys</h3>
             <p className="text-xs text-slate-450 leading-relaxed">
               Forgetting to pull or update local `.env` variables and spending an hour debugging connection states.
             </p>
           </div>
 
-          <div className="bg-[#080a0f] border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
+          <div className="site-card border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
             <h3 className="text-sm font-bold text-slate-200">Git scattered everywhere</h3>
             <p className="text-xs text-slate-450 leading-relaxed">
               Moving outside your active editor to commit updates, resolve simple merges, or switch local branches.
             </p>
           </div>
 
-          <div className="bg-[#080a0f] border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
+          <div className="site-card border border-slate-900 p-6 rounded-xl border-glow-hover space-y-3">
             <h3 className="text-sm font-bold text-slate-200">Monorepo Complexity</h3>
             <p className="text-xs text-slate-450 leading-relaxed">
               Searching nested workspaces to run isolated commands or check script files hidden in directories.
@@ -263,13 +313,13 @@ export default function App() {
           <h2 className="text-2xl md:text-3xl font-extrabold text-slate-200 font-display mb-10">Meet your Local Development Command Center</h2>
           
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 md:gap-3">
-            <div className="bg-[#0c0f16] border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Repository</div>
+            <div className="site-panel border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Repository</div>
             <div className="hidden md:block text-slate-650 text-base">→</div>
-            <div className="bg-[#0c0f16] border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Workspace</div>
+            <div className="site-panel border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Workspace</div>
             <div className="hidden md:block text-slate-650 text-base">→</div>
-            <div className="bg-[#0c0f16] border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Scripts Runner</div>
+            <div className="site-panel border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Scripts Runner</div>
             <div className="hidden md:block text-slate-650 text-base">→</div>
-            <div className="bg-[#0c0f16] border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Terminal Log</div>
+            <div className="site-panel border border-slate-850 px-5 py-3 rounded-lg text-xs font-semibold font-mono w-44">Terminal Log</div>
             <div className="hidden md:block text-slate-650 text-base">→</div>
             <div className="bg-emerald-950/20 text-emerald-400 border border-emerald-900/30 px-5 py-3 rounded-lg text-xs font-bold font-mono w-44">Ship App</div>
           </div>
@@ -279,7 +329,7 @@ export default function App() {
 
 
       {/* COMPARISON WORKFLOW TABLE */}
-      <section id="comparison" className="px-6 py-20 bg-[#030406] border-t border-slate-900 relative z-10">
+      <section id="comparison" className="site-base-section px-6 py-20 border-t border-slate-900 relative z-10">
         <div className="max-w-4xl mx-auto">
           <div className="text-center max-w-xl mx-auto mb-16">
             <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-400 block mb-2">Product Comparisons</span>
@@ -291,7 +341,7 @@ export default function App() {
           <div className="w-full overflow-x-auto rounded-xl border border-slate-900 bg-slate-950/20">
             <table className="w-full text-left border-collapse text-xs font-semibold">
               <thead>
-                <tr className="border-b border-slate-900 bg-[#07090e] text-slate-400 uppercase tracking-widest text-[9px] font-extrabold">
+                <tr className="site-table-head border-b border-slate-900 text-slate-400 uppercase tracking-widest text-[9px] font-extrabold">
                   <th className="p-4">Feature Set</th>
                   <th className="p-4">Traditional CLI</th>
                   <th className="p-4">VS Code + Extensions</th>
@@ -352,26 +402,26 @@ export default function App() {
               When launching a workspace, ProjMan loads statistics across all project targets. Check running tasks, env changes, or commits in one quick overview before writing code.
             </p>
             <div className="grid grid-cols-2 gap-4 pt-2 font-mono">
-              <div className="bg-[#080a0f] border border-slate-900 p-3 rounded-lg">
+              <div className="site-card border border-slate-900 p-3 rounded-lg">
                 <span className="text-[9px] text-slate-500 block">RUNNING PROCESSES</span>
                 <span className="text-lg font-bold text-slate-200 mt-1">12 active</span>
               </div>
-              <div className="bg-[#080a0f] border border-slate-900 p-3 rounded-lg">
+              <div className="site-card border border-slate-900 p-3 rounded-lg">
                 <span className="text-[9px] text-slate-500 block">ACTIVE BRANCHES</span>
                 <span className="text-lg font-bold text-slate-200 mt-1">5 branches</span>
               </div>
-              <div className="bg-[#080a0f] border border-slate-900 p-3 rounded-lg">
+              <div className="site-card border border-slate-900 p-3 rounded-lg">
                 <span className="text-[9px] text-slate-500 block">PENDING COMMITS</span>
                 <span className="text-lg font-bold text-slate-200 mt-1">2 commits</span>
               </div>
-              <div className="bg-[#080a0f] border border-slate-900 p-3 rounded-lg">
+              <div className="site-card border border-slate-900 p-3 rounded-lg">
                 <span className="text-[9px] text-slate-500 block">MODIFIED ENV FILES</span>
                 <span className="text-lg font-bold text-slate-200 mt-1">3 env files</span>
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-7 bg-[#0c0f16] border border-slate-850 p-6 rounded-xl shadow-2xl relative select-none">
+          <div className="site-panel lg:col-span-7 border border-slate-850 p-6 rounded-xl shadow-2xl relative select-none">
             <div className="absolute top-4 right-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900 px-2 py-0.5 rounded">Active stats</div>
             <h3 className="text-xs uppercase font-extrabold text-slate-400 mb-4 tracking-wider">PROJECT LIST DECK</h3>
             <div className="space-y-2 text-xs">
@@ -427,7 +477,7 @@ export default function App() {
           ].map((faq, index) => {
             const isOpen = openFaqIndex === index;
             return (
-              <div key={index} className="bg-[#080a0f] border border-slate-900 rounded-lg overflow-hidden transition-colors">
+              <div key={index} className="site-card border border-slate-900 rounded-lg overflow-hidden transition-colors">
                 <button 
                   onClick={() => setOpenFaqIndex(isOpen ? null : index)}
                   className="w-full px-5 py-4 text-left flex items-center justify-between text-xs font-bold text-slate-200 focus:outline-none"

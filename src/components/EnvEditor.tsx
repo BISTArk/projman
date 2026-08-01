@@ -23,9 +23,11 @@ export const EnvEditor: React.FC<EnvEditorProps> = ({ projectPath, projectId }) 
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load available env files
   const scanEnvFiles = async () => {
+    setIsLoading(true);
     try {
       const found: string[] = [];
       for (const file of COMMON_ENV_FILES) {
@@ -50,6 +52,8 @@ export const EnvEditor: React.FC<EnvEditorProps> = ({ projectPath, projectId }) 
       }
     } catch (err: any) {
       setError(`Failed to scan directory: ${err}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -254,7 +258,22 @@ export const EnvEditor: React.FC<EnvEditorProps> = ({ projectPath, projectId }) 
         </div>
       )}
 
-      {availableFiles.length === 0 ? (
+      {isLoading ? (
+        <div className="flex-1 space-y-3" role="status" aria-label="Loading environment files">
+          <div className="skeleton-bar mb-5 h-9 w-full rounded-lg bg-slate-800/70" />
+          {[0, 1, 2, 3, 4].map((row) => (
+            <div
+              key={row}
+              className="skeleton-card grid grid-cols-[2fr_3fr_40px] gap-4 rounded-lg border border-slate-800/60 bg-slate-950/20 p-3"
+              style={{ animationDelay: `${row * 55}ms` }}
+            >
+              <div className="skeleton-bar h-5 rounded bg-slate-800/70" />
+              <div className="skeleton-bar h-5 rounded bg-slate-800/70" />
+              <div className="skeleton-bar mx-auto h-5 w-5 rounded bg-slate-800/70" />
+            </div>
+          ))}
+        </div>
+      ) : availableFiles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-slate-800 rounded-xl bg-slate-950/20">
           <AlertCircle className="w-12 h-12 text-slate-600 mb-3" />
           <h3 className="text-slate-300 font-bold mb-1">No Environment Files Found</h3>

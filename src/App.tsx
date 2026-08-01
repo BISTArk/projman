@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -22,7 +23,8 @@ import {
   Loader2,
   Info,
   Sun,
-  Moon
+  Moon,
+  Settings
 } from "lucide-react";
 import { Terminal } from "./components/Terminal";
 import { EnvEditor } from "./components/EnvEditor";
@@ -112,9 +114,9 @@ const VSCodeIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 );
 
 const CursorIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="2" y="2" width="20" height="20" rx="5" fill="#fff" />
-    <path fill="#111827" d="M7 5.8 18.2 12 13 13.4l-2.2 4.8L7 5.8Z" />
+  <svg className={`${className} cursor-logo`} viewBox="0 0 24 24" aria-hidden="true">
+    <rect className="cursor-logo__tile" x="2" y="2" width="20" height="20" rx="5" />
+    <path className="cursor-logo__pointer" d="M7 5.8 18.2 12 13 13.4l-2.2 4.8L7 5.8Z" />
   </svg>
 );
 // Config structures
@@ -151,8 +153,15 @@ interface ExitEventPayload {
 }
 
 const isTauriRuntime = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const GITHUB_URL = "https://github.com";
+const GitHubIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.39.97.1-.75.4-1.27.74-1.56-2.57-.3-5.28-1.29-5.28-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18a10.97 10.97 0 0 1 5.75 0c2.19-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.06.79 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z" />
+  </svg>
+);
 
 export default function App() {
+  const [isBooting, setIsBooting] = useState(true);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("projman_theme");
     const initialTheme = saved === "light" ? "light" : "dark";
@@ -164,6 +173,12 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("projman_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => setIsBooting(false), reducedMotion ? 80 : 1050);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Persistence states
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
@@ -225,6 +240,19 @@ export default function App() {
     if (isTauriRuntime) getCurrentWebviewWindow().close();
   };
 
+  const handleOpenGitHub = async () => {
+    try {
+      if (isTauriRuntime) {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(GITHUB_URL);
+        return;
+      }
+      window.open(GITHUB_URL, "_blank", "noopener,noreferrer");
+    } catch {
+      window.open(GITHUB_URL, "_blank", "noopener,noreferrer");
+    }
+  };
+
   // Navigation states
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "env" | "git" | "terminal">("overview");
@@ -256,10 +284,9 @@ export default function App() {
   const [projectModalError, setProjectModalError] = useState<string | null>(null);
 
   // Project editing states
-  const [editingProjectNameId, setEditingProjectNameId] = useState<string | null>(null);
   const [editingProjectNameValue, setEditingProjectNameValue] = useState("");
-  const [editingSubDirId, setEditingSubDirId] = useState<string | null>(null);
   const [editingSubDirValue, setEditingSubDirValue] = useState("");
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
 
   // Workspace editing states
   const [editingWorkspaceNameId, setEditingWorkspaceNameId] = useState<string | null>(null);
@@ -795,19 +822,6 @@ export default function App() {
     }
   };
 
-  const handleSaveProjectName = () => {
-    if (!editingProjectNameValue.trim() || !editingProjectNameId) return;
-    setProjects(
-      projects.map((p) => {
-        if (p.id === editingProjectNameId) {
-          return { ...p, name: editingProjectNameValue.trim() };
-        }
-        return p;
-      })
-    );
-    setEditingProjectNameId(null);
-  };
-
   const handleSaveWorkspaceName = () => {
     if (!editingWorkspaceNameValue.trim() || !editingWorkspaceNameId) return;
     setWorkspaces(
@@ -821,18 +835,28 @@ export default function App() {
     setEditingWorkspaceNameId(null);
   };
 
-  const handleSaveSubDir = () => {
+  const openProjectSettings = () => {
+    if (!activeProject) return;
+    setEditingProjectNameValue(activeProject.name);
+    setEditingSubDirValue(activeProject.subDir || "");
+    setShowProjectSettings(true);
+  };
+
+  const handleSaveProjectSettings = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!activeProjectId) return;
+    const cleanName = editingProjectNameValue.trim();
+    if (!cleanName) return;
     const cleanSub = editingSubDirValue.trim().replace(/^\/+|\/+$/g, "");
     setProjects(
       projects.map((p) => {
         if (p.id === activeProjectId) {
-          return { ...p, subDir: cleanSub || undefined };
+          return { ...p, name: cleanName, subDir: cleanSub || undefined };
         }
         return p;
       })
     );
-    setEditingSubDirId(null);
+    setShowProjectSettings(false);
   };
 
   const handleAddProject = async (e: React.FormEvent) => {
@@ -932,6 +956,36 @@ export default function App() {
     }
   };
 
+  const handleOpenWorkspaceEditor = async (editor: "vscode" | "cursor") => {
+    if (!activeWorkspace || !activeWorkspaceId || activeWorkspaceProjects.length === 0 || openingEditor) return;
+    const operationKey = `workspace:${activeWorkspaceId}:${editor}`;
+    setOpeningEditor(operationKey);
+    const folders = activeWorkspaceProjects.map((project) => ({
+      name: project.name,
+      path: project.subDir ? `${project.path}/${project.subDir}` : project.path,
+    }));
+
+    try {
+      await Promise.all([
+        invoke("open_workspace_in_editor", {
+          editor,
+          workspaceId: activeWorkspaceId,
+          workspaceName: activeWorkspace.name,
+          folders,
+        }),
+        new Promise(resolve => window.setTimeout(resolve, 1200)),
+      ]);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        title: `Could not open workspace in ${editor === "vscode" ? "Visual Studio Code" : "Cursor"}`,
+        message: String(error),
+      });
+    } finally {
+      setOpeningEditor(null);
+    }
+  };
+
   const selectProjectScript = (projectId: string, scriptName: string | null) => {
     setActiveScript(scriptName);
     if (scriptName) {
@@ -994,6 +1048,27 @@ export default function App() {
   const activeProject = projects.find(p => p.id === activeProjectId);
   const activeProjectLogs = logs[activeProjectId || ""]?.[activeScript || ""] || [];
   const activeProjectStatuses = scriptStatuses[activeProjectId || ""] || {};
+  const handleThemeToggle = () => {
+    const root = document.documentElement;
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    const applyTheme = () => {
+      root.dataset.theme = nextTheme;
+      flushSync(() => setTheme(nextTheme));
+    };
+    const documentWithTransitions = document as Document & {
+      startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+    };
+
+    root.classList.add("theme-transition");
+    if (documentWithTransitions.startViewTransition) {
+      documentWithTransitions.startViewTransition(applyTheme).finished.finally(() => {
+        root.classList.remove("theme-transition");
+      });
+    } else {
+      applyTheme();
+      window.setTimeout(() => root.classList.remove("theme-transition"), 520);
+    }
+  };
   const terminalSessions = activeWorkspaceProjects.flatMap(project => {
     const sessionNames = new Set([
       ...Object.keys(logs[project.id] || {}),
@@ -1008,7 +1083,24 @@ export default function App() {
   const runningTerminalCount = terminalSessions.filter(({ status }) => status === "running" || status === "stopping").length;
 
   return (
-    <div className="flex h-screen w-screen text-slate-100 bg-slate-950 overflow-hidden select-none">
+    <div className={`app-shell flex h-screen w-screen text-slate-100 bg-slate-950 overflow-hidden select-none ${isBooting ? "is-booting" : "is-ready"}`}>
+      {isBooting && (
+        <div className="app-loader" role="status" aria-label="ProjMan is starting">
+          <div className="app-loader__glow" />
+          <div className="app-loader__content">
+            <div className="app-loader__mark">
+              <span className="app-loader__orbit app-loader__orbit--outer" />
+              <span className="app-loader__orbit app-loader__orbit--inner" />
+              <div className="app-loader__logo">
+                <img src="/branding/projman-logo.png" alt="" className="h-12 w-12 object-contain" />
+              </div>
+            </div>
+            <div className="app-loader__brand">PROJMAN</div>
+            <div className="app-loader__caption">Preparing your workspace</div>
+            <div className="app-loader__track"><span /></div>
+          </div>
+        </div>
+      )}
       
       {/* SIDEBAR */}
       <aside className="w-72 bg-slate-950/60 border-r border-slate-800/80 flex flex-col shrink-0">
@@ -1072,7 +1164,7 @@ export default function App() {
           </div>
 
           {projectScan.isLoading && (
-            <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 p-2.5" aria-live="polite">
+            <div className="scan-loader rounded-lg border border-indigo-500/15 bg-indigo-500/5 p-2.5" aria-live="polite">
               <div className="mb-2 flex items-center justify-between text-[10px] font-semibold text-indigo-300">
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -1085,6 +1177,10 @@ export default function App() {
                   className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-[width] duration-300"
                   style={{ width: `${projectScan.total ? (projectScan.completed / projectScan.total) * 100 : 0}%` }}
                 />
+              </div>
+              <div className="mt-2.5 space-y-1.5" aria-hidden="true">
+                <div className="skeleton-line w-full" />
+                <div className="skeleton-line w-4/5" />
               </div>
             </div>
           )}
@@ -1267,44 +1363,17 @@ export default function App() {
         
         {/* TOP BAR */}
         <header className="h-16 border-b border-slate-900/80 bg-slate-950/10 flex items-center justify-between px-8 select-none shrink-0" data-tauri-drag-region>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {activeProject ? (
-              editingProjectNameId === activeProject.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={editingProjectNameValue}
-                    onChange={(e) => setEditingProjectNameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveProjectName();
-                      else if (e.key === "Escape") setEditingProjectNameId(null);
-                    }}
-                    autoFocus
-                    className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-bold"
-                  />
-                  <button
-                    onClick={handleSaveProjectName}
-                    className="p-1 hover:bg-slate-900 rounded text-emerald-400"
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <span className="font-bold text-slate-200 text-sm">
-                    {activeProject.name}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setEditingProjectNameId(activeProject.id);
-                      setEditingProjectNameValue(activeProject.name);
-                    }}
-                    className="p-1 text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )
+              <>
+                <span className="shrink-0 font-bold text-slate-200 text-sm">
+                  {activeProject.name}
+                </span>
+                <ChevronRight className="w-4 h-4 shrink-0 text-slate-600" />
+                <span className="max-w-[min(42vw,34rem)] truncate text-xs text-slate-500 font-mono" title={activeProject.path}>
+                  {activeProject.path}
+                </span>
+              </>
             ) : (
               editingWorkspaceNameId === activeWorkspaceId ? (
                 <div className="flex items-center gap-2">
@@ -1345,56 +1414,6 @@ export default function App() {
                 </div>
               )
             )}
-            {activeProject && (
-              <>
-                <ChevronRight className="w-4 h-4 text-slate-600" />
-                <span className="text-xs text-slate-500 font-mono" title="Git Root Path">
-                  {activeProject.path}
-                </span>
-
-                <ChevronRight className="w-4 h-4 text-slate-600" />
-                
-                {editingSubDirId === activeProject.id ? (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-400 font-bold uppercase">Subdir:</span>
-                    <input
-                      type="text"
-                      placeholder="e.g. frontend"
-                      value={editingSubDirValue}
-                      onChange={(e) => setEditingSubDirValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveSubDir();
-                        else if (e.key === "Escape") setEditingSubDirId(null);
-                      }}
-                      autoFocus
-                      className="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-                    />
-                    <button
-                      onClick={handleSaveSubDir}
-                      className="p-0.5 hover:bg-slate-900 rounded text-emerald-400"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 group/subdir">
-                    <span className="text-xs text-slate-400 font-bold uppercase">Subdir:</span>
-                    <span className={`text-xs font-mono ${activeProject.subDir ? "text-indigo-400 font-semibold" : "text-slate-500 italic"}`}>
-                      {activeProject.subDir || "none (root)"}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setEditingSubDirId(activeProject.id);
-                        setEditingSubDirValue(activeProject.subDir || "");
-                      }}
-                      className="p-1 text-slate-500 hover:text-slate-300 opacity-0 group-hover/subdir:opacity-100 transition-opacity"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -1427,8 +1446,9 @@ export default function App() {
             
             {activeProject && (
               <button
+                type="button"
                 onClick={() => setActiveProjectId(null)}
-                className="text-xs font-semibold px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded border border-slate-800 transition-colors"
+                className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800"
               >
                 Back to Dashboard
               </button>
@@ -1439,12 +1459,24 @@ export default function App() {
           <div className="flex items-center border-l border-slate-800/80 pl-4 h-full ml-4 select-none shrink-0 gap-1">
             <button
               type="button"
-              onClick={() => setTheme(current => current === "dark" ? "light" : "dark")}
-              className="mr-2 flex h-7 w-7 items-center justify-center rounded-md border border-slate-800 bg-slate-900 text-slate-400 transition-colors hover:text-indigo-400"
+              onClick={handleOpenGitHub}
+              className="mr-1 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
+              title="Open GitHub"
+              aria-label="Open GitHub"
+            >
+              <GitHubIcon />
+            </button>
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="theme-toggle mr-2 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:border-indigo-500/30 hover:text-indigo-400"
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              aria-pressed={theme === "light"}
             >
-              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              <span key={theme} className="theme-toggle__glyph">
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </span>
             </button>
             <button
               type="button"
@@ -1462,7 +1494,7 @@ export default function App() {
             >
               {isMaximized ? (
                 <div className="w-3 h-3 border-2 border-current relative flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 border border-current absolute -top-1 -right-1 bg-[#080a0f]" />
+                  <div className="w-1.5 h-1.5 border border-current absolute -top-1 -right-1 bg-slate-950" />
                 </div>
               ) : (
                 <div className="w-2.5 h-2.5 border-2 border-current" />
@@ -1481,7 +1513,7 @@ export default function App() {
 
         {/* WORKSPACE OVERVIEW (DASHBOARD) */}
         {activeProjectId === null && workspaceView === "dashboard" ? (
-          <div className="flex-1 overflow-y-auto p-8 space-y-6">
+          <div className="view-enter flex-1 overflow-y-auto p-8 space-y-6">
             
             {/* Workspace Stats Widget */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1530,9 +1562,52 @@ export default function App() {
 
             {/* Project Cards Grid */}
             <div className="space-y-4">
-              <h3 className="font-bold text-sm uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                Workspace Projects
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
+                    Workspace Projects
+                  </h3>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Open every project together as one multi-root editor workspace.
+                  </p>
+                </div>
+
+                {activeWorkspaceProjects.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="mr-1 hidden text-[9px] font-bold uppercase tracking-wider text-slate-600 lg:inline">
+                      Open workspace in
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWorkspaceEditor("vscode")}
+                      disabled={openingEditor !== null}
+                      className="flex items-center gap-2 rounded-lg border border-[#23A8F2]/20 bg-[#23A8F2]/10 px-3 py-2 text-xs font-semibold text-slate-300 transition-all hover:-translate-y-0.5 hover:border-[#23A8F2]/35 hover:bg-[#23A8F2]/20 disabled:cursor-wait disabled:opacity-50 disabled:hover:translate-y-0"
+                      title="Open all workspace projects in Visual Studio Code"
+                    >
+                      {openingEditor === `workspace:${activeWorkspaceId}:vscode` ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-[#23A8F2]" />
+                      ) : (
+                        <VSCodeIcon className="h-4 w-4" />
+                      )}
+                      VS Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWorkspaceEditor("cursor")}
+                      disabled={openingEditor !== null}
+                      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/10 disabled:cursor-wait disabled:opacity-50 disabled:hover:translate-y-0"
+                      title="Open all workspace projects in Cursor"
+                    >
+                      {openingEditor === `workspace:${activeWorkspaceId}:cursor` ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-200" />
+                      ) : (
+                        <CursorIcon className="h-4 w-4" />
+                      )}
+                      Cursor
+                    </button>
+                  </div>
+                )}
+              </div>
               
               {activeWorkspaceProjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-slate-900/10 border border-dashed border-slate-850 rounded-xl">
@@ -1548,7 +1623,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 align-start">
-                  {activeWorkspaceProjects.map((p) => {
+                  {activeWorkspaceProjects.map((p, projectIndex) => {
                     const gitInfo = projectGitInfo[p.id];
                     const isRunning = Object.values(scriptStatuses[p.id] || {}).includes("running");
                     
@@ -1558,7 +1633,8 @@ export default function App() {
                         onClick={() => {
                           openProject(p.id);
                         }}
-                        className="glass-card p-5 rounded-xl border border-slate-800/80 cursor-pointer flex flex-col justify-between space-y-4"
+                        style={{ animationDelay: `${Math.min(projectIndex, 8) * 45}ms` }}
+                        className="glass-card stagger-card p-5 rounded-xl border border-slate-800/80 cursor-pointer flex flex-col justify-between space-y-4"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
@@ -1657,7 +1733,7 @@ export default function App() {
           </div>
         ) : activeProjectId === null ? (
           /* WORKSPACE TERMINAL WALL */
-          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto p-6 scrollbar-hidden">
+          <div className="view-enter flex flex-1 min-h-0 flex-col overflow-y-auto p-6 scrollbar-hidden">
             <div className="mb-5 flex shrink-0 items-center justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-100">
@@ -1774,54 +1850,98 @@ export default function App() {
           </div>
         ) : (
           /* PROJECT TABS & DETAIL VIEW */
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="view-enter flex-1 flex flex-col min-h-0">
             
             {/* Tab navigation headers */}
-            <div className="flex border-b border-slate-900 bg-slate-950/30 px-8 py-0">
-              <button
-                onClick={() => setActiveTab("overview")}
-                className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
-                  activeTab === "overview"
-                    ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
-                    : "border-transparent text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Script Runner
-              </button>
-              <button
-                onClick={() => setActiveTab("env")}
-                className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
-                  activeTab === "env"
-                    ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
-                    : "border-transparent text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Env Editor
-              </button>
-              <button
-                onClick={() => setActiveTab("git")}
-                className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
-                  activeTab === "git"
-                    ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
-                    : "border-transparent text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Local Git Suite
-              </button>
-              <button
-                onClick={() => setActiveTab("terminal")}
-                className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
-                  activeTab === "terminal"
-                    ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
-                    : "border-transparent text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Terminal
-              </button>
+            <div className="flex items-center justify-between gap-4 border-b border-slate-900 bg-slate-950/30 px-8">
+              <div className="flex min-w-0 items-center">
+                <button
+                  onClick={() => setActiveTab("overview")}
+                  className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === "overview"
+                      ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Script Runner
+                </button>
+                <button
+                  onClick={() => setActiveTab("env")}
+                  className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === "env"
+                      ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Env Editor
+                </button>
+                <button
+                  onClick={() => setActiveTab("git")}
+                  className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === "git"
+                      ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Local Git Suite
+                </button>
+                <button
+                  onClick={() => setActiveTab("terminal")}
+                  className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === "terminal"
+                      ? "border-indigo-500 text-indigo-400 bg-indigo-950/5"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Terminal
+                </button>
+              </div>
+
+              {activeProject && (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditor(activeProject, "vscode")}
+                    disabled={openingEditor !== null}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#23A8F2]/20 bg-[#23A8F2]/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition-colors hover:border-[#23A8F2]/35 hover:bg-[#23A8F2]/20 disabled:cursor-wait disabled:opacity-50"
+                    title="Open this project in Visual Studio Code"
+                  >
+                    {openingEditor === `${activeProject.id}:vscode` ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#23A8F2]" />
+                    ) : (
+                      <VSCodeIcon className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden 2xl:inline">VS Code</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditor(activeProject, "cursor")}
+                    disabled={openingEditor !== null}
+                    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
+                    title="Open this project in Cursor"
+                  >
+                    {openingEditor === `${activeProject.id}:cursor` ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-200" />
+                    ) : (
+                      <CursorIcon className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden 2xl:inline">Cursor</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openProjectSettings}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 transition-colors hover:border-slate-700 hover:bg-slate-800 hover:text-slate-200"
+                    title="Edit project name and subdirectory"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    <span className="hidden 2xl:inline">Settings</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Inner view container */}
-            <div className="flex-1 overflow-y-auto p-8 min-h-0">
+            <div key={activeTab} className="tab-view-enter flex-1 overflow-y-auto p-8 min-h-0">
               {activeTab === "overview" && activeProject && (
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-full min-h-0">
                   
@@ -1891,8 +2011,8 @@ export default function App() {
 
       {/* OVERLAY: SYNC ALL GIT PROGRESS */}
       {syncStatus.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col max-h-[500px] shadow-2xl">
+        <div className="modal-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="modal-surface w-full max-w-xl bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col max-h-[500px] shadow-2xl">
             <h3 className="text-base font-bold text-slate-100 mb-2 flex items-center gap-2">
               <RefreshCw className={`w-4 h-4 text-indigo-400 ${syncStatus.stage !== "idle" ? "animate-spin" : ""}`} />
               Workspace Git Synchronization
@@ -1943,8 +2063,8 @@ export default function App() {
 
       {/* MODAL: CREATE WORKSPACE */}
       {showWorkspaceModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl space-y-4">
+        <div className="modal-backdrop fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-surface w-full max-w-sm bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl space-y-4">
             <div>
               <h3 className="font-extrabold text-slate-100 text-base">New Workspace</h3>
               <p className="text-xs text-slate-400 mt-1">Group folders into separate custom workspaces.</p>
@@ -1982,10 +2102,10 @@ export default function App() {
 
       {/* MODAL: ADD PROJECT */}
       {showProjectModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="modal-backdrop fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <form
             onSubmit={handleAddProject}
-            className="w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl space-y-4"
+            className="modal-surface w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl space-y-4"
           >
             <div>
               <h3 className="font-extrabold text-slate-100 text-base">Import Project Directory</h3>
@@ -2096,22 +2216,126 @@ export default function App() {
         </div>
       )}
 
+      {showProjectSettings && activeProject && (
+        <div
+          className="modal-backdrop fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-settings-title"
+        >
+          <form
+            onSubmit={handleSaveProjectSettings}
+            className="modal-surface w-full max-w-lg rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
+          >
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-400">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 id="project-settings-title" className="text-base font-extrabold text-slate-100">
+                    Project settings
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Update how this project appears and where its package files are resolved.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProjectSettings(false)}
+                className="rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                aria-label="Close project settings"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-300">Display name</span>
+                <input
+                  type="text"
+                  value={editingProjectNameValue}
+                  onChange={(event) => setEditingProjectNameValue(event.target.value)}
+                  autoFocus
+                  required
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none transition-colors focus:border-indigo-500"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-300">Project root</span>
+                <input
+                  type="text"
+                  value={activeProject.path}
+                  readOnly
+                  className="w-full cursor-default rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 font-mono text-xs text-slate-500 outline-none"
+                />
+                <span className="mt-1.5 block text-[10px] text-slate-500">
+                  Remove and re-import the project to change its root folder.
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-300">
+                  Package subdirectory <span className="font-normal text-slate-500">(optional)</span>
+                </span>
+                <input
+                  type="text"
+                  value={editingSubDirValue}
+                  onChange={(event) => setEditingSubDirValue(event.target.value)}
+                  placeholder="e.g. frontend or packages/web"
+                  spellCheck={false}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 font-mono text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-indigo-500"
+                />
+                <span className="mt-1.5 block text-[10px] leading-relaxed text-slate-500">
+                  Scripts, terminals, and environment files use this folder. Git remains anchored to the project root.
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-7 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowProjectSettings(false)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow transition-colors hover:bg-indigo-500"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Save settings
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {openingEditor && (
-        <div className="fixed bottom-5 right-5 z-[70] flex items-center gap-3 rounded-xl border border-indigo-500/20 bg-slate-900/95 px-4 py-3 shadow-2xl backdrop-blur-md" role="status" aria-live="polite">
+        <div className="toast-enter fixed bottom-5 right-5 z-[70] flex items-center gap-3 rounded-xl border border-indigo-500/20 bg-slate-900/95 px-4 py-3 shadow-2xl backdrop-blur-md" role="status" aria-live="polite">
           <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
           <div>
             <div className="text-xs font-bold text-slate-100">
               Opening {openingEditor.endsWith(":vscode") ? "Visual Studio Code" : "Cursor"}
+              {openingEditor.startsWith("workspace:") ? " workspace" : ""}
             </div>
-            <div className="text-[10px] text-slate-500">Please wait for the editor window...</div>
+            <div className="text-[10px] text-slate-500">
+              {openingEditor.startsWith("workspace:")
+                ? `Preparing ${activeWorkspaceProjects.length} project folder${activeWorkspaceProjects.length === 1 ? "" : "s"}...`
+                : "Please wait for the editor window..."}
+            </div>
           </div>
         </div>
       )}
 
       {/* THEMED APP NOTICE (replaces native browser alerts) */}
       {notice && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="notice-title">
-          <div className="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+        <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+          <div className="modal-surface w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
             <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg border ${
               notice.tone === "error"
                 ? "border-rose-500/25 bg-rose-500/10 text-rose-400"
@@ -2134,8 +2358,8 @@ export default function App() {
 
       {/* OVERLAY: DELETE CONFIRMATION MODAL */}
       {projectToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col shadow-2xl scale-up-entry">
+        <div className="modal-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="modal-surface w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col shadow-2xl">
             <div className="flex items-center gap-3 text-rose-500 mb-4">
               <div className="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
                 <Trash2 className="w-6 h-6" />

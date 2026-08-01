@@ -86,6 +86,31 @@ fn write_env_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_package_json(path: String, content: String) -> Result<(), String> {
+    let package_path = std::path::Path::new(&path);
+    if package_path.file_name().and_then(|name| name.to_str()) != Some("package.json") {
+        return Err("Script changes can only be written to package.json".to_string());
+    }
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid package.json: {}", e))?;
+    let root = parsed
+        .as_object()
+        .ok_or_else(|| "package.json must contain a JSON object".to_string())?;
+    if let Some(scripts) = root.get("scripts") {
+        let script_map = scripts
+            .as_object()
+            .ok_or_else(|| "The package.json scripts field must be an object".to_string())?;
+        if script_map.values().any(|command| !command.is_string()) {
+            return Err("Every package.json script command must be a string".to_string());
+        }
+    }
+
+    std::fs::write(package_path, content)
+        .map_err(|e| format!("Failed to write package.json: {}", e))
+}
+
+#[tauri::command]
 async fn run_git_command(path: String, args: Vec<String>) -> Result<String, String> {
     // Git may wait on the network, hooks, or a large worktree. Keeping it on a
     // blocking worker lets the webview continue painting progress feedback.
@@ -111,51 +136,121 @@ async fn run_git_command(path: String, args: Vec<String>) -> Result<String, Stri
     .map_err(|e| format!("Git worker failed: {}", e))?
 }
 
+fn launch_editor_target(editor: &str, target: &std::path::Path) -> Result<(), String> {
+    let (display_name, command_name, relative_install_path) = match editor {
+        "vscode" => ("Visual Studio Code", "code", "Programs/Microsoft VS Code/Code.exe"),
+        "cursor" => ("Cursor", "cursor", "Programs/cursor/Cursor.exe"),
+        _ => return Err("Unsupported editor requested".to_string()),
+    };
+
+    let mut candidates = Vec::<PathBuf>::new();
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(local_app_data).join(relative_install_path));
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        let executable = if editor == "vscode" {
+            "Microsoft VS Code/Code.exe"
+        } else {
+            "Cursor/Cursor.exe"
+        };
+        candidates.push(PathBuf::from(program_files).join(executable));
+    }
+
+    for executable in candidates.iter().filter(|candidate| candidate.exists()) {
+        if Command::new(executable).arg(target).spawn().is_ok() {
+            return Ok(());
+        }
+    }
+
+    Command::new(command_name)
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| {
+            format!(
+                "{} is not installed or its command is not available in PATH.",
+                display_name
+            )
+        })
+}
+
 #[tauri::command]
 async fn open_in_editor(editor: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        if !std::path::Path::new(&path).is_dir() {
+        let project_path = std::path::Path::new(&path);
+        if !project_path.is_dir() {
             return Err(format!("Project directory does not exist: {}", path));
         }
-
-        let (display_name, command_name, relative_install_path) = match editor.as_str() {
-            "vscode" => ("Visual Studio Code", "code", "Programs/Microsoft VS Code/Code.exe"),
-            "cursor" => ("Cursor", "cursor", "Programs/cursor/Cursor.exe"),
-            _ => return Err("Unsupported editor requested".to_string()),
-        };
-
-        let mut candidates = Vec::<PathBuf>::new();
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            candidates.push(PathBuf::from(local_app_data).join(relative_install_path));
-        }
-        if let Some(program_files) = std::env::var_os("ProgramFiles") {
-            let executable = if editor == "vscode" {
-                "Microsoft VS Code/Code.exe"
-            } else {
-                "Cursor/Cursor.exe"
-            };
-            candidates.push(PathBuf::from(program_files).join(executable));
-        }
-
-        for executable in candidates.iter().filter(|candidate| candidate.exists()) {
-            if Command::new(executable).arg(&path).spawn().is_ok() {
-                return Ok(());
-            }
-        }
-
-        Command::new(command_name)
-            .arg(&path)
-            .spawn()
-            .map(|_| ())
-            .map_err(|_| {
-                format!(
-                    "{} is not installed or its command is not available in PATH.",
-                    display_name
-                )
-            })
+        launch_editor_target(&editor, project_path)
     })
     .await
     .map_err(|e| format!("Editor launcher failed: {}", e))?
+}
+
+#[derive(serde::Deserialize)]
+struct EditorWorkspaceFolder {
+    name: String,
+    path: String,
+}
+
+#[tauri::command]
+async fn open_workspace_in_editor(
+    editor: String,
+    workspace_id: String,
+    workspace_name: String,
+    folders: Vec<EditorWorkspaceFolder>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if folders.is_empty() {
+            return Err("Add at least one project to this workspace first.".to_string());
+        }
+
+        let mut workspace_folders = Vec::new();
+        let mut seen_paths = std::collections::HashSet::new();
+        for folder in folders {
+            let folder_path = PathBuf::from(&folder.path);
+            if !folder_path.is_dir() {
+                return Err(format!("Project directory does not exist: {}", folder.path));
+            }
+
+            let normalized = folder_path.to_string_lossy().to_string();
+            if seen_paths.insert(normalized.clone()) {
+                workspace_folders.push(serde_json::json!({
+                    "name": folder.name,
+                    "path": normalized
+                }));
+            }
+        }
+
+        let workspace_document = serde_json::json!({
+            "folders": workspace_folders,
+            "settings": {
+                "window.title": workspace_name
+            }
+        });
+        let workspace_content = serde_json::to_string_pretty(&workspace_document)
+            .map_err(|e| format!("Failed to create editor workspace: {}", e))?;
+
+        let safe_id: String = workspace_id
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric() || *character == '-' || *character == '_')
+            .collect();
+        let safe_id = if safe_id.is_empty() {
+            "workspace".to_string()
+        } else {
+            safe_id
+        };
+        let workspace_dir = std::env::temp_dir().join("projman-workspaces");
+        std::fs::create_dir_all(&workspace_dir)
+            .map_err(|e| format!("Failed to prepare editor workspace: {}", e))?;
+        let workspace_file = workspace_dir.join(format!("projman-{}.code-workspace", safe_id));
+        std::fs::write(&workspace_file, workspace_content)
+            .map_err(|e| format!("Failed to save editor workspace: {}", e))?;
+
+        launch_editor_target(&editor, &workspace_file)
+    })
+    .await
+    .map_err(|e| format!("Workspace launcher failed: {}", e))?
 }
 
 fn start_tracked_process(
@@ -587,8 +682,10 @@ pub fn run() {
             file_exists,
             read_file,
             write_env_file,
+            write_package_json,
             run_git_command,
             open_in_editor,
+            open_workspace_in_editor,
             start_project_script,
             start_project_command,
             send_project_script_input,

@@ -1,11 +1,11 @@
 {
-  "version": "1.3.1",
-  "notes": "New ProjMan branding, persistent light and dark themes, a responsive 2x2 Terminal Wall, persistent terminal output and input, more reliable process stopping, and batched log rendering for better performance.",
-  "pub_date": "2026-07-20T19:43:33Z",
+  "version": "1.4.0",
+  "notes": "A major polish release with smooth transitions and loading states, a fully accessible light theme across the app and landing page, editable package scripts, improved project actions, and multi-root VS Code and Cursor workspace launching.",
+  "pub_date": "2026-08-01T10:02:21Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/BISTArk/projman/releases/download/v1.3.1/ProjMan_1.3.1_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdmFvTW1NMmFxZ2kwZFdLbW4vd1hUaW9pRExJRk5MMHhGOXVaRjFXUVdPd0x5NXJuWFhrV0dxRjgrT0paNTdnb3k1bHNZUDdQd1B1cW9KSElJOEg2b0J4N04wWGs5ZEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTc2NjAzCWZpbGU6UHJvak1hbl8xLjMuMV94NjQtc2V0dXAuZXhlCnM5RTVnZ3BLTjRnclJWZzU1aVJIajB3R2VGZFgrdEJmeTVCbmJsRWZsaVk4L0crWUttci9YWmEzbWdQV0UwUDFzdnB2WTJxTllhSkRoelpjZ3pwYUN3PT0K"
+      "url": "https://github.com/BISTArk/projman/releases/download/v1.4.0/ProjMan_1.4.0_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdmFvTW1NMmFxZ2hlYlQrUGZ2N21SNENvU2lodkxDcng2VXZWOXBjVFc5NTVFWTZJd0l0NEdsb1hYVnVSMlVveWlRMHVQVWZGNENvL1hKTHVZY21kdnNOL2EwYUVsMVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NTc4NDg4CWZpbGU6UHJvak1hbl8xLjQuMF94NjQtc2V0dXAuZXhlCjg2M0pacTJJbUt2Q3BnMGZKYnArejdLWW42K0laTElyYnVUSEdyUWZCbGpaTDF1NXo3dCtUelV2dFIwaC9YbXJGbWR2MVpUQnl5VVdGU1FaNGhpZ0J3PT0K"
     }
   }
 }
