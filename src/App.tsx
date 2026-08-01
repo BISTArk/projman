@@ -1330,7 +1330,7 @@ export default function App() {
 
         {/* Footer info */}
         <div className="p-4 bg-slate-950/40 border-t border-slate-900 flex items-center justify-between text-slate-500 text-xs">
-          <span className="font-semibold text-[10px] tracking-wider text-slate-600">PROJMAN CLIENT v1.3</span>
+          <span className="font-semibold text-[10px] tracking-wider text-slate-600">PROJMAN CLIENT v1.5.0</span>
           <button
             onClick={async () => {
               if (isCheckingUpdate) return;

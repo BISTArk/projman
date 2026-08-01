@@ -8,6 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Emitter, Manager};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 #[cfg(windows)]
 fn hide_console_window(command: &mut Command) {
     use std::os::windows::process::CommandExt;
@@ -52,6 +55,7 @@ fn append_script_log(
     }
 }
 
+#[cfg(windows)]
 fn kill_process_tree(pid: u32) -> Result<(), String> {
     let mut command = std::process::Command::new("taskkill");
     command.args(["/F", "/T", "/PID", &pid.to_string()]);
@@ -65,6 +69,77 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
 }
+
+#[cfg(unix)]
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    let process_group = -(pid as i32);
+    let result = unsafe { libc::kill(process_group, libc::SIGTERM) };
+    if result == 0 {
+        Ok(())
+    } else {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            Ok(())
+        } else {
+            Err(format!("Failed to stop process group {}: {}", pid, error))
+        }
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn kill_process_tree(_pid: u32) -> Result<(), String> {
+    Err("Stopping process trees is not supported on this platform".to_string())
+}
+
+fn configure_shell_command(command: &mut Command, script: &str) {
+    #[cfg(windows)]
+    {
+        command.arg("/C").arg(script);
+        hide_console_window(command);
+    }
+
+    #[cfg(unix)]
+    {
+        command.arg("-lc").arg(script);
+        command.process_group(0);
+    }
+}
+
+fn shell_command(script: &str) -> Command {
+    #[cfg(windows)]
+    let mut command = Command::new("cmd");
+
+    #[cfg(unix)]
+    let mut command = Command::new(std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into()));
+
+    #[cfg(not(any(windows, unix)))]
+    let mut command = Command::new("sh");
+
+    configure_shell_command(&mut command, script);
+    command
+}
+
+#[cfg(target_os = "macos")]
+fn inherit_login_shell_path() {
+    const PATH_MARKER: &str = "__PROJMAN_PATH__";
+    let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
+    if let Ok(output) = Command::new(shell)
+        .args(["-ilc", "printf '\n__PROJMAN_PATH__%s' \"$PATH\""])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if output.status.success() {
+            if let Some(path) = stdout.rsplit_once(PATH_MARKER).map(|(_, path)| path.trim()) {
+                if !path.is_empty() {
+                    std::env::set_var("PATH", path);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn inherit_login_shell_path() {}
 
 #[tauri::command]
 async fn select_directory() -> Result<Option<String>, String> {
@@ -150,7 +225,7 @@ async fn run_git_command(path: String, args: Vec<String>) -> Result<String, Stri
 }
 
 fn launch_editor_target(editor: &str, target: &std::path::Path) -> Result<(), String> {
-    let (display_name, command_name, relative_install_path) = match editor {
+    let (display_name, command_name, _relative_install_path) = match editor {
         "vscode" => (
             "Visual Studio Code",
             "code",
@@ -160,21 +235,42 @@ fn launch_editor_target(editor: &str, target: &std::path::Path) -> Result<(), St
         _ => return Err("Unsupported editor requested".to_string()),
     };
 
-    let mut candidates = Vec::<PathBuf>::new();
-    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-        candidates.push(PathBuf::from(local_app_data).join(relative_install_path));
-    }
-    if let Some(program_files) = std::env::var_os("ProgramFiles") {
-        let executable = if editor == "vscode" {
-            "Microsoft VS Code/Code.exe"
-        } else {
-            "Cursor/Cursor.exe"
-        };
-        candidates.push(PathBuf::from(program_files).join(executable));
+    #[cfg(windows)]
+    {
+        let mut candidates = Vec::<PathBuf>::new();
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(local_app_data).join(_relative_install_path));
+        }
+        if let Some(program_files) = std::env::var_os("ProgramFiles") {
+            let executable = if editor == "vscode" {
+                "Microsoft VS Code/Code.exe"
+            } else {
+                "Cursor/Cursor.exe"
+            };
+            candidates.push(PathBuf::from(program_files).join(executable));
+        }
+
+        for executable in candidates.iter().filter(|candidate| candidate.exists()) {
+            if Command::new(executable).arg(target).spawn().is_ok() {
+                return Ok(());
+            }
+        }
     }
 
-    for executable in candidates.iter().filter(|candidate| candidate.exists()) {
-        if Command::new(executable).arg(target).spawn().is_ok() {
+    #[cfg(target_os = "macos")]
+    {
+        let application_name = if editor == "vscode" {
+            "Visual Studio Code"
+        } else {
+            "Cursor"
+        };
+        if Command::new("open")
+            .args(["-a", application_name])
+            .arg(target)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+        {
             return Ok(());
         }
     }
@@ -290,15 +386,12 @@ fn start_tracked_process(
         }
     }
 
-    // Spawn the command on Windows using cmd
-    let mut process_command = Command::new("cmd");
+    let mut process_command = shell_command(&command);
     process_command
-        .args(["/C", &command])
         .current_dir(&path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    hide_console_window(&mut process_command);
     let mut child = process_command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
@@ -575,14 +668,11 @@ fn run_terminal_command(
         }
     }
 
-    // Spawn command shell (cmd /C on Windows)
-    let mut process_command = Command::new("cmd");
+    let mut process_command = shell_command(&command);
     process_command
-        .args(["/C", &command])
         .current_dir(&cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    hide_console_window(&mut process_command);
     let mut child = process_command
         .spawn()
         .map_err(|e| format!("Failed to run command: {}", e))?;
@@ -707,6 +797,7 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    inherit_login_shell_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

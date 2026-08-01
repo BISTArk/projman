@@ -1,11 +1,12 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:macos": "tauri build --bundles app,dmg",
     "preview": "vite preview",
     "tauri": "tauri"
   },

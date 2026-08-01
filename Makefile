@@ -1,18 +1,21 @@
 # ProjMan Build Automation Makefile
 
+ifeq ($(OS),Windows_NT)
 SHELL := powershell.exe
 .SHELLFLAGS := -NoProfile -Command
+endif
 
-.PHONY: install dev build sign release clean help
+.PHONY: install dev build build-macos sign release clean help
 
 help:
-	Write-Host 'ProjMan Build Commands:'; \
-	Write-Host '  make install  - Install npm dependencies'; \
-	Write-Host '  make dev      - Start Tauri dev client'; \
-	Write-Host '  make build    - Compile production installers'; \
-	Write-Host '  make sign     - Sign compiled installers'; \
-	Write-Host '  make release  - Build + sign in one step'; \
-	Write-Host '  make clean    - Clean Rust build cache'
+	@echo 'ProjMan Build Commands:'
+	@echo '  make install      - Install npm dependencies'
+	@echo '  make dev          - Start Tauri dev client'
+	@echo '  make build        - Compile production installers'
+	@echo '  make build-macos  - Compile the macOS app and DMG'
+	@echo '  make sign         - Sign Windows installers (Windows only)'
+	@echo '  make release      - Build + sign on Windows'
+	@echo '  make clean        - Clean Rust build cache'
 
 install:
 	npm install
@@ -23,10 +26,18 @@ dev:
 build:
 	npm run tauri build
 
+build-macos:
+	npm run build:macos
+
 sign:
 	powershell -ExecutionPolicy Bypass -File sign.ps1
 
 release: build sign
 
+ifeq ($(OS),Windows_NT)
 clean:
 	Set-Location src-tauri; cargo clean
+else
+clean:
+	cd src-tauri && cargo clean
+endif

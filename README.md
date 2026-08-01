@@ -68,9 +68,9 @@ Built with **Tauri v2**, **React**, **TypeScript**, and **Vite**, ProjMan offers
 
 ### Setup & Run
 
-1.  **Clone or Open project**:
+1.  **Clone or open the project**:
     ```bash
-    cd c:/Users/Admin/Documents/projman
+    cd /path/to/projman
     ```
 2.  **Install dependencies**:
     ```bash
@@ -95,12 +95,31 @@ ProjMan includes a `Makefile` to streamline common compilation tasks:
     ```bash
     make dev
     ```
-*   **Compile production installer (.exe)**:
+*   **Compile production installers for the current OS**:
     ```bash
     make build
     ```
-    *This packages the compiled React bundle, bundles icon resources, compiles the Rust executable, and generates standalone `.msi`/`.exe` installers in `src-tauri/target/release/bundle/`.*
+    *On Windows this creates `.msi`/`.exe` installers. On macOS this creates an app bundle and `.dmg` under `src-tauri/target/release/bundle/`.*
+*   **Compile only the macOS app and DMG**:
+    ```bash
+    make build-macos
+    ```
 *   **Clean build targets**:
     ```bash
     make clean
     ```
+
+## Cross-platform releases and automatic updates
+
+Push a version tag such as `v1.5.0` to run `.github/workflows/release.yml`. The workflow verifies that `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` all match the tag, then publishes:
+
+* Windows x64 NSIS (`.exe`) and MSI installers.
+* A universal macOS app and `.dmg` for Apple Silicon and Intel Macs.
+* Signed updater archives and one `latest.json` manifest covering both operating systems.
+* The same manifest at `docs/update.json`, which keeps existing ProjMan installations on the shared update channel.
+
+The repository must define `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. The private key must match the updater public key in `src-tauri/tauri.conf.json`; changing it would prevent existing installations from accepting new updates.
+
+For a macOS build that opens without Gatekeeper warnings, also configure `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`. Without those optional Apple credentials, CI creates an ad-hoc-signed DMG that users may need to approve once in macOS Privacy & Security.
+
+The landing page is built from `promo-site/` directly into `docs/`, the GitHub Pages source. It detects macOS or Windows in the browser, puts the matching download first, and resolves the actual installer asset from the latest GitHub release.

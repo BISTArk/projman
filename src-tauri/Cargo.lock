@@ -3723,8 +3723,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-app"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
+ "libc",
  "rfd",
  "serde",
  "serde_json",

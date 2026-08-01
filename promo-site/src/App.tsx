@@ -18,12 +18,34 @@ const GitHubIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   </svg>
 );
 
+type DesktopOS = "windows" | "macos" | "unknown";
+
+interface GitHubReleaseAsset {
+  name: string;
+  browser_download_url: string;
+}
+
+const detectDesktopOS = (): DesktopOS => {
+  const navigatorWithPlatform = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const platform = `${navigatorWithPlatform.userAgentData?.platform || ""} ${navigator.platform || ""} ${navigator.userAgent || ""}`.toLowerCase();
+  if (platform.includes("mac")) return "macos";
+  if (platform.includes("win")) return "windows";
+  return "unknown";
+};
+
 export default function App() {
   const GITHUB_REPO_URL = "https://github.com/BISTArk/projman";
   const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
 
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [detectedOS] = useState<DesktopOS>(detectDesktopOS);
+  const [downloadUrls, setDownloadUrls] = useState<Record<"windows" | "macos", string>>({
+    windows: GITHUB_RELEASES_URL,
+    macos: GITHUB_RELEASES_URL,
+  });
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("projman_site_theme");
     const initialTheme = saved === "light" || saved === "dark"
@@ -40,6 +62,37 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("projman_site_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("https://api.github.com/repos/BISTArk/projman/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+        return response.json() as Promise<{ assets?: GitHubReleaseAsset[] }>;
+      })
+      .then(({ assets = [] }) => {
+        const windows = assets.find((asset) => /setup\.exe$/i.test(asset.name));
+        const macCandidates = assets.filter((asset) => /\.dmg$/i.test(asset.name));
+        const macos = macCandidates.find((asset) => /universal/i.test(asset.name)) || macCandidates[0];
+        setDownloadUrls({
+          windows: windows?.browser_download_url || GITHUB_RELEASES_URL,
+          macos: macos?.browser_download_url || GITHUB_RELEASES_URL,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("Could not resolve direct release downloads", error);
+      });
+    return () => controller.abort();
+  }, [GITHUB_RELEASES_URL]);
+
+  const primaryOS: Exclude<DesktopOS, "unknown"> = detectedOS === "macos" ? "macos" : "windows";
+  const secondaryOS: Exclude<DesktopOS, "unknown"> = primaryOS === "macos" ? "windows" : "macos";
+  const downloadLabel = (os: "windows" | "macos") =>
+    os === "macos" ? "Download for macOS (.dmg)" : "Download for Windows";
 
   const handleThemeToggle = () => {
     const root = document.documentElement;
@@ -137,12 +190,12 @@ export default function App() {
             <GitHubIcon className="w-4 h-4" />
           </a>
           <a 
-            href={GITHUB_RELEASES_URL}
+            href={downloadUrls[primaryOS]}
             target="_blank"
             className="btn-primary inline-flex items-center justify-center px-4 py-2 rounded-lg text-xs font-extrabold gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Download Latest</span>
+            <span className="hidden sm:inline">{primaryOS === "macos" ? "Download for Mac" : "Download for Windows"}</span>
           </a>
         </div>
       </nav>
@@ -186,13 +239,21 @@ export default function App() {
           className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center w-full"
         >
           <a 
-            href={GITHUB_RELEASES_URL}
+            href={downloadUrls[primaryOS]}
             target="_blank"
             className="btn-primary w-full sm:w-auto px-8 py-3.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 group"
           >
             <Download className="w-4 h-4" />
-            <span>Download for Windows</span>
+            <span>{downloadLabel(primaryOS)}</span>
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+          </a>
+          <a
+            href={downloadUrls[secondaryOS]}
+            target="_blank"
+            className="btn-secondary w-full sm:w-auto px-6 py-3.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            <span>{downloadLabel(secondaryOS)}</span>
           </a>
           <a 
             href={GITHUB_REPO_URL}
@@ -215,6 +276,7 @@ export default function App() {
           <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-500" /> Powered by Tauri & Rust</span>
           <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-500" /> 100% Local-first</span>
           <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-500" /> Works completely offline</span>
+          <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-500" /> Windows &amp; macOS</span>
         </motion.div>
       </section>
 
@@ -463,6 +525,10 @@ export default function App() {
               a: "No. ProjMan has a 100% local-first architecture. It runs native system bindings using Tauri and stores data on your disk. No telemetry, subscriptions, or login credentials are required."
             },
             {
+              q: "Which operating systems are supported?",
+              a: "ProjMan supports Windows 10 or later and macOS 10.13 or later. The macOS DMG is universal, so the same download works on Apple Silicon and Intel Macs. Both editions receive updates from the same release channel."
+            },
+            {
               q: "Does it support monorepos?",
               a: "Yes. ProjMan handles Turborepo, Nx, and package directory subfolders natively. You can target scripts or `.env` parameters to a subdirectory (like `apps/web`) while Git anchors automatically to the workspace root repository."
             },
@@ -514,12 +580,20 @@ export default function App() {
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
-              href={GITHUB_RELEASES_URL}
+              href={downloadUrls[primaryOS]}
               target="_blank"
               className="btn-primary w-full sm:w-auto px-8 py-3.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
-              <span>Download for Windows</span>
+              <span>{downloadLabel(primaryOS)}</span>
+            </a>
+            <a
+              href={downloadUrls[secondaryOS]}
+              target="_blank"
+              className="btn-secondary w-full sm:w-auto px-6 py-3.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>{downloadLabel(secondaryOS)}</span>
             </a>
             <a 
               href={GITHUB_REPO_URL}

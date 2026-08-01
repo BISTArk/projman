@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ProjMan",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "identifier": "com.bistark.projman",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -26,13 +26,23 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "A local development workspace for projects, scripts, terminals, Git, and environment files.",
     "icon": [
       "icons/projman-32.png",
       "icons/projman-128.png",
       "icons/projman-256.png",
       "icons/projman.ico",
       "icons/projman.icns"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
+    }
   },
   "plugins": {
     "updater": {
