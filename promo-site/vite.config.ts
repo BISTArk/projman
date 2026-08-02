@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const updaterManifestPath = fileURLToPath(new URL('../docs/update.json', import.meta.url))
+const isVercelBuild = Boolean(process.env.VERCEL)
 const updaterManifest = existsSync(updaterManifestPath)
   ? readFileSync(updaterManifestPath)
   : undefined
@@ -19,9 +20,9 @@ const preserveUpdaterManifest = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), preserveUpdaterManifest],
-  base: '/projman/',
+  base: isVercelBuild ? '/' : '/projman/',
   build: {
-    outDir: '../docs',
+    outDir: isVercelBuild ? 'dist' : '../docs',
     emptyOutDir: true,
   },
 })
