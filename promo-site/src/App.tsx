@@ -109,11 +109,11 @@ const featureCards = [
 ];
 
 const comparisonRows = [
-  ["Project overview", "Folder navigation", "Workspace files", "Live workspace dashboard"],
-  ["Package scripts", "Manual lookup", "Extension command list", "Auto-discovered action deck"],
-  ["Process output", "Scattered terminals", "Integrated terminals", "Persistent process console"],
-  ["Environment files", "Raw text editing", "Raw text editing", "Purpose-built environment view"],
-  ["Git workflow", "Command line", "Source control sidebar", "Staging, diffs, commits, sync"],
+  { feature: "Workspace overview", terminal: ["None", "Shell by shell"], editor: ["Project scoped", "Editor only"], projman: ["Unified", "Every project in view"] },
+  { feature: "Process lifecycle", terminal: ["Manual", "Separate terminals"], editor: ["Basic", "Task runner"], projman: ["Persistent", "Run, stop, and restart"] },
+  { feature: "Environment files", terminal: ["Raw editing", "Find the right file"], editor: ["Raw editing", "File by file"], projman: ["Target-aware", "Dedicated environment view"] },
+  { feature: "Git workflow", terminal: ["Commands", "Context in your head"], editor: ["Integrated", "Current project"], projman: ["Workspace-wide", "Status, diffs, and sync"] },
+  { feature: "Context switching", terminal: ["High", "Tabs and windows"], editor: ["Medium", "Panels and extensions"], projman: ["Low", "One operational layer"] },
 ];
 
 const faqs = [
@@ -356,15 +356,43 @@ export default function App() {
 
         <section id="compare" className="compare-section">
           <div className="section-shell">
-            <Reveal className="section-heading">
-              <span className="section-kicker">Designed for the job</span>
-              <h2>Your editor writes code.<br />ProjMan runs the workspace around it.</h2>
+            <Reveal className="compare-heading">
+              <div>
+                <span className="section-kicker">A different layer of the stack</span>
+                <h2>Your editor writes code.<br />ProjMan runs everything around it.</h2>
+              </div>
+              <p>Keep the tools you already like. ProjMan gives local operations a dedicated place instead of squeezing them into another terminal tab or editor panel.</p>
             </Reveal>
-            <Reveal className="compare-table-wrap" delay={0.1}>
-              <table className="compare-table">
-                <thead><tr><th>Workflow</th><th>Terminal</th><th>Editor extensions</th><th>ProjMan</th></tr></thead>
-                <tbody>{comparisonRows.map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={cell} className={index === 3 ? "is-projman" : ""}>{index === 3 && <Check size={14} />} {cell}</td>)}</tr>)}</tbody>
-              </table>
+
+            <Reveal className="compare-profiles" delay={0.06}>
+              <article className="compare-profile">
+                <span className="compare-profile__icon"><Terminal size={18} /></span>
+                <div><small>TERMINAL</small><strong>Maximum control</strong><p>Powerful and precise, but every process and bit of context stays manual.</p></div>
+              </article>
+              <article className="compare-profile">
+                <span className="compare-profile__icon"><Code2 size={18} /></span>
+                <div><small>EDITOR + EXTENSIONS</small><strong>Close to the code</strong><p>Convenient for one project, but operational state competes with editing space.</p></div>
+              </article>
+              <article className="compare-profile compare-profile--featured">
+                <span className="compare-profile__badge">PURPOSE-BUILT</span>
+                <span className="compare-profile__icon"><img src="/app-icon.png" alt="" /></span>
+                <div><small>PROJMAN</small><strong>A calm control plane</strong><p>One native workspace for projects, processes, environment files, and Git.</p></div>
+              </article>
+            </Reveal>
+
+            <Reveal className="compare-matrix" delay={0.12}>
+              <div className="compare-matrix__header">
+                <span>Workflow</span><span>Terminal</span><span>Editor extensions</span><span className="is-projman"><img src="/app-icon.png" alt="" /> ProjMan</span>
+              </div>
+              {comparisonRows.map((row) => (
+                <div className="compare-matrix__row" key={row.feature}>
+                  <strong>{row.feature}</strong>
+                  <div data-label="Terminal"><b>{row.terminal[0]}</b><small>{row.terminal[1]}</small></div>
+                  <div data-label="Editor extensions"><b>{row.editor[0]}</b><small>{row.editor[1]}</small></div>
+                  <div data-label="ProjMan" className="is-projman"><b><Check size={13} /> {row.projman[0]}</b><small>{row.projman[1]}</small></div>
+                </div>
+              ))}
+              <div className="compare-matrix__footer"><span>ProjMan complements your editor—it does not replace it.</span><a href={downloadUrls[primaryOS]} target="_blank" rel="noreferrer">Try the dedicated workspace <ArrowRight size={14} /></a></div>
             </Reveal>
           </div>
         </section>
