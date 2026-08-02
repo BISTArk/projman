@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   Code2,
-  Command,
   Download,
   FileKey,
   FolderGit2,
@@ -216,7 +215,7 @@ export default function App() {
 
       <nav className="site-nav" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label="ProjMan home">
-          <span className="brand-mark"><Command size={17} strokeWidth={2.4} /></span>
+          <span className="brand-mark"><img src="/app-icon.png" alt="" /></span>
           <span className="brand-copy"><strong>ProjMan</strong><small>Local workspace control</small></span>
         </a>
 
@@ -232,9 +231,6 @@ export default function App() {
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
           <a className="nav-github" href={GITHUB_REPO_URL} target="_blank" rel="noreferrer" aria-label="ProjMan on GitHub"><Code2 size={17} /></a>
-          <a className="button button--small button--primary" href={downloadUrls[primaryOS]} target="_blank" rel="noreferrer">
-            <Download size={15} /> <span>{primaryOS === "macos" ? "Download for Mac" : "Download"}</span>
-          </a>
         </div>
       </nav>
 
@@ -419,7 +415,7 @@ export default function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="brand"><span className="brand-mark"><Command size={17} /></span><span className="brand-copy"><strong>ProjMan</strong><small>Local workspace control</small></span></div>
+        <div className="brand"><span className="brand-mark"><img src="/app-icon.png" alt="" /></span><span className="brand-copy"><strong>ProjMan</strong><small>Local workspace control</small></span></div>
         <p>Built for developers who would rather ship than organize terminal tabs.</p>
         <div><a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub</a><a href={GITHUB_RELEASES_URL} target="_blank" rel="noreferrer">Releases</a><a href="#top">Back to top ↑</a></div>
       </footer>

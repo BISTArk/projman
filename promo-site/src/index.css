@@ -89,7 +89,8 @@ button:not(:disabled), a { cursor: pointer; }
 }
 
 .brand { display: inline-flex; align-items: center; gap: 11px; width: fit-content; }
-.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; color: #16100a; background: var(--signal); box-shadow: inset 0 1px rgba(255,255,255,.3); }
+.brand-mark { width: 36px; height: 36px; display: grid; place-items: center; }
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .brand-copy { display: flex; flex-direction: column; line-height: 1; }
 .brand-copy strong { font-family: "Outfit", sans-serif; font-size: 15px; letter-spacing: -0.01em; }
 .brand-copy small { margin-top: 5px; color: var(--subtle); font-size: 8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
@@ -116,7 +117,6 @@ button:not(:disabled), a { cursor: pointer; }
 }
 .button:hover { transform: translateY(-2px); }
 .button:active { transform: translateY(0) scale(.98); }
-.button--small { min-height: 38px; padding-inline: 14px; font-size: 11px; border-radius: 8px; }
 .button--primary { color: var(--signal-dark); background: var(--signal); border-color: color-mix(in srgb, var(--signal) 74%, white); box-shadow: 0 10px 26px rgba(170, 98, 20, .16), inset 0 1px rgba(255,255,255,.28); }
 .button--primary:hover { box-shadow: 0 15px 34px rgba(170, 98, 20, .24), inset 0 1px rgba(255,255,255,.3); }
 .button--secondary { color: var(--ink); background: var(--panel); border-color: var(--line-strong); }
@@ -317,8 +317,6 @@ button:not(:disabled), a { cursor: pointer; }
   .section-shell, .signal-track, .site-footer { width: min(100% - 32px, 1280px); }
   .site-nav { height: 64px; padding-inline: 16px; }
   .brand-copy small, .nav-github { display: none; }
-  .button--small { padding-inline: 11px; }
-  .button--small span { display: none; }
   .hero { min-height: auto; padding-block: 72px 92px; gap: 58px; }
   .hero h1 { font-size: clamp(43px, 13vw, 62px); }
   .hero-lede { font-size: 14px; }
